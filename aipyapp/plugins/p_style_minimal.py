@@ -307,6 +307,18 @@ class DisplayMinimal(RichDisplayPlugin):
         tree.add(f"{T('Summary')}: {summary.get('summary', '') if summary else ''}")
         self.console.print(tree)
 
+    def on_step_cleanup_completed(self, event):
+        """Step清理完成事件处理 - 简约风格"""
+        typed_event = event.typed_event
+        cleaned_messages = typed_event.cleaned_messages
+        tokens_saved = typed_event.tokens_saved
+        # 简约显示：只显示关键信息
+        if cleaned_messages > 0:
+            title = self._get_title(T("🧹 Cleaned {} messages, saved {} tokens"), cleaned_messages, tokens_saved, style="dim cyan")
+        else:
+            title = self._get_title(T("🧹 No cleanup needed"), style="dim cyan")
+        self.console.print(title)
+
     def on_upload_result(self, event):
         """云端上传结果事件处理"""
         status_code = event.typed_event.status_code

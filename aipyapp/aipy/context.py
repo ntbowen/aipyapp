@@ -432,3 +432,57 @@ class ContextManager:
         self.compressor.update_config(config)
         self.log.info(f"Context config updated: {config.strategy.value}")
     
+    def delete_messages_by_ids(self, message_ids: List[str]) -> Tuple[int, int]:
+        """
+        按ID删除消息，带安全保护
+        
+        Args:
+            message_ids: 要删除的消息ID列表
+            
+        Returns:
+            Tuple[删除数量, 节省的token数]
+        """
+        if not message_ids:
+            return 0, 0
+            
+        messages = self.data.messages
+        if len(messages) <= 2:  # 至少保留系统消息和第一条用户消息
+            return 0, 0
+        
+        # 计算需要保护的消息索引
+        protected_indices = set()
+        
+        # 保护系统消息
+        for i, msg in enumerate(messages):
+            if msg.role == MessageRole.SYSTEM:
+                protected_indices.add(i)
+        
+        # 保护第一条用户消息（通常是任务指令）
+        first_user_found = False
+        for i, msg in enumerate(messages):
+            if msg.role == MessageRole.USER and not first_user_found:
+                protected_indices.add(i)
+                first_user_found = True
+                break
+        
+        # 收集要删除的消息
+        to_delete = []
+        tokens_saved = 0
+        
+        for i, msg in enumerate(messages):
+            if msg.id in message_ids and i not in protected_indices:
+                to_delete.append(i)
+                tokens_saved += self.compressor.estimate_message_tokens(msg)
+        
+        # 从后向前删除，避免索引变化
+        for i in sorted(to_delete, reverse=True):
+            del messages[i]
+        
+        # 更新token计数
+        self.data.total_tokens = sum(self.compressor.estimate_message_tokens(msg) for msg in messages)
+        
+        deleted_count = len(to_delete)
+        if deleted_count > 0:
+            self.log.info(f"Deleted {deleted_count} messages by ID, saved {tokens_saved} tokens")
+        
+        return deleted_count, tokens_saved

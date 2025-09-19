@@ -306,6 +306,14 @@ class UploadResultEvent(BaseEvent):
     status_code: int = Field(..., title="Status Code", description="HTTP status code of the upload")
     url: Optional[str] = Field(None, title="URL", description="URL of the uploaded content")
 
+class StepCleanupCompletedEvent(BaseEvent):
+    """Event fired when step cleanup completes"""
+    name: Literal["step_cleanup_completed"] = "step_cleanup_completed"
+    cleaned_messages: int = Field(..., title="Cleaned Messages", description="Number of messages cleaned up")
+    remaining_messages: int = Field(..., title="Remaining Messages", description="Number of messages remaining after cleanup")
+    tokens_saved: int = Field(..., title="Tokens Saved", description="Number of tokens saved by cleanup")
+    tokens_remaining: int = Field(..., title="Tokens Remaining", description="Number of tokens remaining after cleanup")
+
 # ==================== Event Factory ====================
 
 # Register all event types with the factory

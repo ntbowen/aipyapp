@@ -342,6 +342,23 @@ class DisplayClassic(RichDisplayPlugin):
         tree.add(f"{T('Summary')}: {summary}")
         self.console.print(tree)
 
+    def on_step_cleanup_completed(self, event):
+        """Step清理完成事件处理"""
+        typed_event = event.typed_event
+        cleaned_messages = typed_event.cleaned_messages
+        remaining_messages = typed_event.remaining_messages
+        tokens_saved = typed_event.tokens_saved
+        tokens_remaining = typed_event.tokens_remaining
+        
+        title = self._get_title(T("Context cleanup completed"), style="dim cyan")
+        tree = Tree(title)
+        tree.add(T("🧹 Cleaned {} messages", cleaned_messages))
+        tree.add(T("📝 {} messages remaining", remaining_messages))
+        tree.add(T("🔥 Saved {} tokens", tokens_saved))
+        tree.add(T("📊 {} tokens remaining", tokens_remaining))
+        tree.add(T("📉 Context optimized for better performance"))
+        self.console.print(tree)
+
     def on_upload_result(self, event):
         """云端上传结果事件处理"""
         status_code = event.typed_event.status_code

@@ -269,6 +269,14 @@ class DisplayModern(RichDisplayPlugin):
             self.console.print()
             self._parse_and_display_content(response, "Final Response")
             
+    def on_step_cleanup_completed(self, event):
+        """Step清理完成事件处理"""
+        cleaned_messages = event.typed_event.cleaned_messages
+        title = Text("🧹 上下文清理完成", style="bold cyan")
+        content = Text(f"已清理 {cleaned_messages} 条错误消息，上下文已优化", style="cyan")
+        panel = Panel(content, title=title, border_style="cyan", padding=(0, 1))
+        self.console.print(panel)
+
     def on_task_completed(self, event):
         """任务结束事件处理"""
         path = event.typed_event.path or ''
