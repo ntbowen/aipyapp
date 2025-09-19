@@ -295,7 +295,14 @@ class Task(Stoppable):
         os.chdir(self.cwd)
         self._saved = False
 
-        step = Step(self, StepData(instruction=instruction, title=title))
+        # 先存储用户消息，获取ChatMessage
+        stored_user_message = self.message_storage.store(user_message)
+        
+        step = Step(self, StepData(
+            initial_instruction=stored_user_message,
+            instruction=instruction, 
+            title=title
+        ))
         self.steps.append(step)
         self.emit('step_started', instruction=instruction, step=len(self.steps) + 1, title=title)
         response = step.run(user_message)
@@ -390,111 +397,71 @@ class SimpleStepCleaner:
         self.context_manager = context_manager
         self.log = logger.bind(src='SimpleStepCleaner')
         
-    def cleanup_step(self, step) -> int:
-        """Step完成后的彻底清理：只保留第一个Round的用户指令和最后一个Round的LLM回复"""
+    def cleanup_step(self, step) -> tuple[int, int, int, int]:
+        """Step完成后的彻底清理：使用新的数据结构，只需保留initial_instruction和final_response
+        
+        Returns:
+            (cleaned_count, remaining_messages, tokens_saved, tokens_remaining)
+        """
         if not hasattr(step.data, 'rounds') or not step.data.rounds:
             self.log.info("No rounds found in step, skipping cleanup")
-            return 0
+            current_messages = self.context_manager.data.messages
+            return 0, len(current_messages), 0, sum(self.context_manager.compressor.estimate_message_tokens(msg) for msg in current_messages)
             
         rounds = step.data.rounds
-        self.log.info(f"Step has {len(rounds)} rounds, implementing thorough cleanup")
+        self.log.info(f"Step has {len(rounds)} rounds, implementing new structure cleanup")
         
         if len(rounds) < 1:
             self.log.info("No rounds to process")
-            return 0
+            current_messages = self.context_manager.data.messages
+            return 0, len(current_messages), 0, sum(self.context_manager.compressor.estimate_message_tokens(msg) for msg in current_messages)
         
-        # 获取所有消息以便分析用户消息ID
+        # 获取所有消息
         all_messages = self.context_manager.data.messages
         messages_to_clean = []
         
-        # 找到第一条用户消息ID（要保留的）
-        first_user_message_id = None
+        # 找到需要保留的消息ID：
+        # 1. 系统消息（自动保护）
+        # 2. initial_instruction的消息ID
+        # 3. final_response的消息ID
+        
+        initial_instruction_id = step.data.initial_instruction.id if step.data.initial_instruction else None
+        final_response_id = step.data.final_response.message.id if step.data.final_response and step.data.final_response.message else None
+        
+        self.log.info(f"Preserving initial instruction ID: {initial_instruction_id}")
+        self.log.info(f"Preserving final response ID: {final_response_id}")
+        
+        # 标记要删除的消息（除了系统消息、初始指令、最终回复）
         for msg in all_messages:
-            if msg.role.value == 'user':  # MessageRole.USER
-                first_user_message_id = msg.id
-                self.log.info(f"Found first user message ID to preserve: {first_user_message_id}")
-                break
-        
-        # 彻底简化策略：只保留第一个Round的用户消息和最后一个Round的LLM消息
-        for i in range(len(rounds)):
-            round_obj = rounds[i]
-            
-            # Round 0: 保留用户指令，删除LLM回复（除非这是唯一的LLM回复）
-            if i == 0:
-                self.log.info(f"Round 0: Keeping user instruction")
-                # 删除第一轮的LLM回复（只要不是最后一轮）
-                if i != len(rounds) - 1 and hasattr(round_obj, 'response') and hasattr(round_obj.response, 'message'):
-                    messages_to_clean.append(round_obj.response.message.id)
-                    self.log.info(f"Round 0: Marked LLM response for cleanup: {round_obj.response.message.id}")
-                else:
-                    self.log.info(f"Round 0: Keeping LLM response (it's the final response)")
+            # 保护：系统消息、初始指令、最终回复
+            if (msg.role.value == 'system' or 
+                msg.id == initial_instruction_id or 
+                msg.id == final_response_id):
                 continue
-                
-            # Round n-1 (最后一轮): 保留LLM回复，删除对应的用户消息
-            if i == len(rounds) - 1:
-                self.log.info(f"Round {i}: Keeping final LLM response")
-                # 最后一轮的用户消息需要删除（它是对倒数第二轮LLM回复的反馈）
-                self._mark_user_message_for_cleanup(i, all_messages, messages_to_clean, first_user_message_id)
-                continue
-            
-            # 中间轮次 (Round 1 到 Round n-2): 删除所有消息
-            self.log.info(f"Round {i}: Cleaning all messages (intermediate round)")
-            
-            # 删除中间轮次的LLM消息
-            if hasattr(round_obj, 'response') and hasattr(round_obj.response, 'message'):
-                messages_to_clean.append(round_obj.response.message.id)
-                self.log.info(f"Round {i}: Marked LLM response for cleanup: {round_obj.response.message.id}")
-                
-            # 删除中间轮次的用户消息
-            self._mark_user_message_for_cleanup(i, all_messages, messages_to_clean, first_user_message_id)
+            messages_to_clean.append(msg.id)
         
-        self.log.info(f"Found {len(messages_to_clean)} messages to clean (both LLM and user messages)")
+        self.log.info(f"Will clean {len(messages_to_clean)} intermediate messages")
         
         # 执行清理
-        if messages_to_clean:
-            # 获取清理前的统计信息
-            messages_before = len(all_messages)
-            tokens_before = self.context_manager.data.total_tokens
-            
-            # 执行清理
-            deleted_count, tokens_saved = self.context_manager.delete_messages_by_ids(messages_to_clean)
-            
-            # 获取清理后的统计信息
-            current_messages = self.context_manager.data.messages
-            messages_after = len(current_messages)
-            # 重新计算剩余tokens，确保准确性
-            tokens_after = sum(self.context_manager.compressor.estimate_message_tokens(msg) for msg in current_messages)
-            
-            self.log.info(f"Step cleanup completed: {deleted_count} messages cleaned, {tokens_saved} tokens saved")
-            self.log.info(f"Messages: {messages_before} -> {messages_after}, Tokens: {tokens_before} -> {tokens_after}")
-            
-            return deleted_count, messages_after, tokens_saved, tokens_after
-        else:
-            self.log.info("No messages need cleaning")
-            messages_count = len(all_messages)
-            # 重新计算当前tokens，确保准确性
-            tokens_count = sum(self.context_manager.compressor.estimate_message_tokens(msg) for msg in all_messages)
-            return 0, messages_count, 0, tokens_count
-    
-    def _mark_user_message_for_cleanup(self, round_index, all_messages, messages_to_clean, first_user_message_id):
-        """标记指定轮次对应的用户消息用于清理"""
-        # 策略：根据轮次索引找到对应的用户消息
-        # Round 0 对应第1条用户消息（已找到，要保留）
-        # Round 1 对应第2条用户消息
-        # Round i 对应第(i+1)条用户消息
+        if not messages_to_clean:
+            self.log.info("No messages need to be cleaned")
+            return 0, len(all_messages), 0, sum(self.context_manager.compressor.estimate_message_tokens(msg) for msg in all_messages)
         
-        user_message_count = 0
-        target_user_index = round_index + 1  # Round i 对应第(i+1)条用户消息
+        # 计算清理前的token数
+        tokens_before = sum(self.context_manager.compressor.estimate_message_tokens(msg) for msg in all_messages)
         
-        for msg in all_messages:
-            if msg.role.value == 'user':  # MessageRole.USER
-                user_message_count += 1
-                if user_message_count == target_user_index:
-                    if msg.id != first_user_message_id:  # 不删除第一条用户消息
-                        messages_to_clean.append(msg.id)
-                        self.log.info(f"Round {round_index}: Marked user message for cleanup: {msg.id}")
-                    else:
-                        self.log.info(f"Round {round_index}: Skipping first user message (protected): {msg.id}")
-                    break
-        else:
-            self.log.info(f"Round {round_index}: No corresponding user message found")
+        # 执行清理
+        cleaned_count, tokens_saved = self.context_manager.delete_messages_by_ids(messages_to_clean)
+        
+        # 清理Step数据结构：清空rounds，只保留initial_instruction和final_response
+        step.data.rounds.clear()
+        
+        # 重新计算当前的消息和token
+        current_messages = self.context_manager.data.messages
+        messages_after = len(current_messages)
+        tokens_after = sum(self.context_manager.compressor.estimate_message_tokens(msg) for msg in current_messages)
+        
+        self.log.info(f"Cleaned {cleaned_count} messages and cleared {len(rounds)} rounds")
+        self.log.info(f"Messages: {len(all_messages)} -> {messages_after}, Tokens: {tokens_before} -> {tokens_after}")
+        
+        return cleaned_count, messages_after, tokens_saved, tokens_after
