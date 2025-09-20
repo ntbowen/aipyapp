@@ -306,14 +306,8 @@ class MessageCompressor:
         self.log.info(f"Config updated: {new_config.strategy.value}")
     
     def estimate_message_tokens(self, message: ChatMessage) -> int:
-        """估算消息的token数量"""
-        total_tokens = 0
-        if message.role == MessageRole.ASSISTANT:
-            total_tokens = message.usage.get('total_tokens', 0)
-
-        if total_tokens == 0:
-            total_tokens = self.estimator.estimate(message)
-        return total_tokens
+        """估算消息token数（向后兼容，建议使用estimate_single_message_tokens）"""
+        return self.estimator.estimate(message)
 
 class ContextData(BaseModel):
     messages: List[ChatMessage] = Field(default_factory=list)
@@ -349,12 +343,36 @@ class ContextManager:
     def messages(self):
         return self.data.messages
     
+    def add_chat(self, user_message: ChatMessage, llm_message: ChatMessage):
+        """添加用户-LLM对话（推荐使用）"""
+        self.data.messages.extend([user_message, llm_message])
+        
+        # 尝试从LLM消息提取准确的总token数
+        context_total = llm_message.total_tokens
+        if context_total:
+            self.data.total_tokens = context_total
+            self.log.info(f"Updated context tokens from LLM usage: {self.data.total_tokens}")
+        else:
+            # 兜底：累加两条消息的估算
+            user_tokens = self.compressor.estimate_message_tokens(user_message)
+            llm_tokens = self.compressor.estimate_message_tokens(llm_message)
+            self.data.total_tokens += user_tokens + llm_tokens
+            self.log.info(f"Estimated tokens for new chat: +{user_tokens + llm_tokens}, total: {self.data.total_tokens}")
+    
     def add_message(self, message: ChatMessage):
-        """添加消息到上下文"""
-        # 添加到缓存
+        """添加单独消息（系统消息、反馈消息等）"""
         self.data.messages.append(message)
-        self.data.total_tokens = self.compressor.estimate_message_tokens(message)
-        self.log.info(f"Added message: {message.role}, tokens: {self.data.total_tokens}, id: {message.id}")
+        
+        # 检查是否是包含总token数的Assistant消息
+        context_total = message.total_tokens
+        if context_total:
+            self.data.total_tokens = context_total
+            self.log.info(f"Updated context tokens from LLM usage: {self.data.total_tokens}")
+        else:
+            # 普通消息，累加估算的token
+            message_tokens = self.compressor.estimate_message_tokens(message)
+            self.data.total_tokens += message_tokens
+            self.log.info(f"Added single message: +{message_tokens} tokens, total: {self.data.total_tokens}, id: {message.id}")
     
     def get_messages(self, force_compress: bool = False) -> List[ChatMessage]:
         """获取压缩后的消息列表"""

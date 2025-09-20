@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from ..llm import ErrorMessage, UserMessage
 from .chat import ChatMessage
 from .response import Response
-from .toolcalls import ToolCallResult
+from .toolcalls import ToolCallResult, ToolName
 from .prompts import Prompts
 from .events import BaseEvent
 from .types import DataMixin
@@ -27,6 +27,8 @@ class Round(BaseModel):
     toolcall_results: List[ToolCallResult] | None = None
     # 系统对执行结果的回应消息(如果有)
     system_feedback: UserMessage | None = None
+    # 上下文清理标记：是否已从上下文中删除
+    context_deleted: bool = Field(default=False, description="Whether this round's messages have been deleted from context")
 
     def should_continue(self) -> bool:
         return self.llm_response.should_continue()
@@ -39,6 +41,42 @@ class Round(BaseModel):
         else:
             return None
         return UserMessage(content=prompt)
+    
+    def can_safely_delete(self) -> bool:
+        """判断Round对应的上下文消息是否可以安全删除
+        
+        可以安全删除的情况：
+        1. LLM回复有解析错误
+        2. 所有工具调用都失败
+        
+        保留的情况：
+        3. 纯文本Round（Step自然结束）
+        4. 有任何成功的工具调用
+        """
+        # 1. LLM回复有解析错误 -> 可以删除
+        if self.llm_response.errors:
+            return True
+        
+        # 2. 所有工具调用都失败 -> 可以删除
+        if self.toolcall_results and all(self._tool_call_failed(tcr) for tcr in self.toolcall_results):
+            return True
+        
+        # 3. 其他情况 -> 保留
+        # 包括：纯文本Round（Step结束）和有成功工具调用的Round
+        return False
+    
+    def _tool_call_failed(self, tool_call_result: ToolCallResult) -> bool:
+        """判断工具调用是否失败"""
+        # 检查工具调用层面的错误
+        if tool_call_result.result.error is not None:
+            return True
+        
+        # 对于 Exec 工具，还需要检查实际执行结果
+        if tool_call_result.tool_name == ToolName.EXEC:
+            exec_result = tool_call_result.result.result
+            return exec_result.has_error()
+        
+        return False
     
 class StepData(BaseModel):
     # 用户的初始指令作为Step级别的字段

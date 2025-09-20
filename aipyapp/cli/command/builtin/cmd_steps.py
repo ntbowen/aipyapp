@@ -3,6 +3,9 @@
 
 from datetime import datetime
 
+from rich.tree import Tree
+from rich.text import Text
+
 from .utils import row2table
 from ..base import CommandMode, ParserCommand
 from aipyapp import T
@@ -15,9 +18,12 @@ class StepsCommand(ParserCommand):
 
     def add_subcommands(self, subparsers):
         subparsers.add_parser('list', help=T('List task steps'))
-        subparsers.add_parser('clear', help=T('Clear task steps'))
+        parser = subparsers.add_parser('clear', help=T('Clear step context'))
+        parser.add_argument('index', type=int, nargs='?', default=-1, help=T('Index of the step to clear (default: last step)'))
         parser = subparsers.add_parser('delete', help=T('Delete task steps'))
         parser.add_argument('index', type=int, help=T('Index of the task step to delete'))
+        parser = subparsers.add_parser('show', help=T('Show rounds in a step'))
+        parser.add_argument('index', type=int, nargs='?', default=-1, help=T('Index of the step to show (default: last step)'))
         
     def get_arg_values(self, name, subcommand=None, partial=None):
         if name == 'index':
@@ -43,19 +49,210 @@ class StepsCommand(ParserCommand):
         ctx.console.print(table)
     
     def cmd_clear(self, args, ctx):
+        """清理指定Step的上下文"""
         task = ctx.task
-        ret = task.clear_steps()
-        if ret:
-            ctx.console.print(T("Task steps cleared"))
+        if not task.steps:
+            ctx.console.print(T("No task steps found"))
+            return False
+        
+        # 确定要清理的step索引
+        if args.index == -1:
+            step_index = len(task.steps) - 1  # 最后一个step
         else:
-            ctx.console.print(T("Failed to clear task steps"))
-        return ret
+            step_index = args.index
+            
+        if step_index < 0 or step_index >= len(task.steps):
+            ctx.console.print(T(f"Invalid step index: {step_index}"))
+            return False
+            
+        step = task.steps[step_index]
+        step_title = step.data.title or step.data.instruction[:50]
+        
+        try:
+            # 调用SimpleStepCleaner的cleanup_step方法
+            cleaned_count, remaining_messages, tokens_saved, tokens_remaining = task.step_cleaner.cleanup_step(step)
+            
+            # 显示清理结果
+            ctx.console.print(f"[green]✅ Step {step_index} context cleared[/green]")
+            ctx.console.print(f"[dim]Step:[/dim] {step_title}")
+            ctx.console.print(f"[dim]🧹 Cleaned messages:[/dim] {cleaned_count}")
+            ctx.console.print(f"[dim]📝 Remaining messages:[/dim] {remaining_messages}")
+            ctx.console.print(f"[dim]🔥 Tokens saved:[/dim] {tokens_saved}")
+            ctx.console.print(f"[dim]📊 Tokens remaining:[/dim] {tokens_remaining}")
+            
+            if cleaned_count > 0:
+                ctx.console.print(f"[dim]💡 Use 'step show {step_index}' to see which rounds were deleted[/dim]")
+            
+            return True
+            
+        except Exception as e:
+            ctx.console.print(f"[red]❌ Failed to clear step context: {e}[/red]")
+            return False
     
     def cmd_delete(self, args, ctx):
+        """删除指定Step并清理其上下文"""
         task = ctx.task
-        ret = task.delete_step(args.index)
-        if ret:
-            ctx.console.print(T("Task step deleted"))
+        if not task.steps:
+            ctx.console.print(T("No task steps found"))
+            return False
+            
+        step_index = args.index
+        if step_index < 0 or step_index >= len(task.steps):
+            ctx.console.print(T(f"Invalid step index: {step_index}"))
+            return False
+            
+        if step_index == 0:
+            ctx.console.print(T("Cannot delete Step 0"))
+            return False
+            
+        # 获取要删除的step信息
+        step_to_delete = task.steps[step_index]
+        step_title = step_to_delete.data.title or step_to_delete.data.instruction[:50]
+        
+        try:
+            ret = task.delete_step(step_index)
+            if ret:
+                ctx.console.print(f"[green]✅ Step {step_index} deleted successfully[/green]")
+                ctx.console.print(f"[dim]Deleted step:[/dim] {step_title}")
+                ctx.console.print(f"[dim]💡 Step context and all related messages were cleaned from context[/dim]")
+            else:
+                ctx.console.print(f"[red]❌ Failed to delete step {step_index}[/red]")
+            return ret
+            
+        except Exception as e:
+            ctx.console.print(f"[red]❌ Error deleting step: {e}[/red]")
+            return False
+    
+    def cmd_show(self, args, ctx):
+        """显示指定Step的Round详情"""
+        task = ctx.task
+        if not task.steps:
+            ctx.console.print(T("No task steps found"))
+            return False
+        
+        # 确定要显示的step索引
+        if args.index == -1:
+            step_index = len(task.steps) - 1  # 最后一个step
         else:
-            ctx.console.print(T("Failed to delete task step"))
-        return ret
+            step_index = args.index
+            
+        if step_index < 0 or step_index >= len(task.steps):
+            ctx.console.print(T(f"Invalid step index: {step_index}"))
+            return False
+            
+        step = task.steps[step_index]
+        step_data = step.data
+        
+        # 创建Step树
+        step_title = step_data.title or step_data.instruction[:50]
+        start_time = datetime.fromtimestamp(step_data.start_time).strftime('%H:%M:%S')
+        
+        tree = Tree(f"[bold blue]Step {step_index}[/bold blue]: {step_title}")
+        
+        # 添加Step元信息
+        meta_branch = tree.add("[dim]📊 Meta Info[/dim]")
+        meta_branch.add(f"[dim]Start Time:[/dim] {datetime.fromtimestamp(step_data.start_time).strftime('%Y-%m-%d %H:%M:%S')}")
+        if step_data.end_time:
+            end_time = datetime.fromtimestamp(step_data.end_time).strftime('%Y-%m-%d %H:%M:%S')
+            duration = step_data.end_time - step_data.start_time
+            meta_branch.add(f"[dim]End Time:[/dim] {end_time}")
+            meta_branch.add(f"[dim]Duration:[/dim] {duration:.2f}s")
+        
+        # 显示Rounds
+        if not step_data.rounds:
+            tree.add("[dim]📭 No rounds found[/dim]")
+        else:
+            # 统计信息
+            active_rounds = sum(1 for r in step_data.rounds if not r.context_deleted)
+            deleted_rounds = len(step_data.rounds) - active_rounds
+            
+            rounds_branch = tree.add(f"[bold]🔄 Rounds ({len(step_data.rounds)})[/bold]")
+            stats_node = rounds_branch.add(f"[dim]📈 Context: {active_rounds} active, {deleted_rounds} deleted[/dim]")
+            
+            # 显示每个Round
+            for i, round in enumerate(step_data.rounds):
+                # 状态图标和颜色
+                if round.context_deleted:
+                    status_icon = "🗑️"
+                    status_color = "red"
+                    status_text = "DELETED"
+                else:
+                    status_icon = "✅"
+                    status_color = "green"
+                    status_text = "ACTIVE"
+                
+                # Round类型
+                if round.llm_response.errors:
+                    type_icon = "❌"
+                    type_text = "ERROR"
+                    type_color = "red"
+                elif not round.toolcall_results:
+                    type_icon = "💬"
+                    type_text = "TEXT"
+                    type_color = "blue"
+                else:
+                    failed_tools = sum(1 for tcr in round.toolcall_results if round._tool_call_failed(tcr))
+                    total_tools = len(round.toolcall_results)
+                    if failed_tools == total_tools:
+                        type_icon = "🔧❌"
+                        type_text = f"TOOLS({failed_tools}/{total_tools})"
+                        type_color = "red"
+                    elif failed_tools == 0:
+                        type_icon = "🔧✅"
+                        type_text = f"TOOLS({total_tools})"
+                        type_color = "green"
+                    else:
+                        type_icon = "🔧⚠️"
+                        type_text = f"TOOLS({total_tools-failed_tools}/{total_tools})"
+                        type_color = "yellow"
+                
+                # 创建Round节点
+                round_title = f"{status_icon} [{status_color}]Round {i}[/{status_color}] [{type_color}]{type_icon} {type_text}[/{type_color}]"
+                round_node = rounds_branch.add(round_title)
+                
+                # LLM回复内容
+                if round.llm_response.message and hasattr(round.llm_response.message, 'content'):
+                    content = round.llm_response.message.content.strip()
+                    if content:
+                        # 限制显示长度
+                        if len(content) > 100:
+                            content_preview = content[:100] + "..."
+                        else:
+                            content_preview = content
+                        # 处理换行符
+                        content_preview = content_preview.replace('\n', ' ')
+                        round_node.add(f"[dim]💬 Response:[/dim] {content_preview}")
+                
+                # 工具调用详情
+                if round.toolcall_results:
+                    tools_node = round_node.add(f"[dim]🔧 Tools ({len(round.toolcall_results)}):[/dim]")
+                    for j, tcr in enumerate(round.toolcall_results):
+                        if round._tool_call_failed(tcr):
+                            # 显示具体的错误信息
+                            error_msg = tcr.result.error
+                            if not error_msg and tcr.tool_name == 'EXEC' and hasattr(tcr.result, 'result') and tcr.result.result:
+                                # 对于EXEC工具，如果没有工具层错误但执行失败，显示执行错误
+                                exec_result = tcr.result.result
+                                if hasattr(exec_result, 'returncode') and exec_result.returncode != 0:
+                                    error_msg = f"Exit code: {exec_result.returncode}"
+                                elif hasattr(exec_result, 'errstr') and exec_result.errstr:
+                                    error_msg = exec_result.errstr
+                                elif hasattr(exec_result, 'stderr') and exec_result.stderr:
+                                    error_msg = exec_result.stderr[:100] + "..." if len(exec_result.stderr) > 100 else exec_result.stderr
+                                else:
+                                    error_msg = "Execution failed"
+                            tool_status = f"[red]❌ {tcr.tool_name}[/red]: {error_msg or 'Unknown error'}"
+                        else:
+                            tool_status = f"[green]✅ {tcr.tool_name}[/green]"
+                        tools_node.add(tool_status)
+                
+                # 系统反馈
+                if round.system_feedback:
+                    feedback_content = round.system_feedback.content[:50].replace('\n', ' ')
+                    if len(round.system_feedback.content) > 50:
+                        feedback_content += "..."
+                    round_node.add(f"[dim]🔄 Feedback:[/dim] {feedback_content}")
+        
+        ctx.console.print("\n")
+        ctx.console.print(tree)
+        return True

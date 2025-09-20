@@ -153,6 +153,5 @@ class Client:
         msg = client([msg.dict() for msg in messages], stream_processor=stream_processor, extra_headers=self.extra_headers)
         msg = self.storage.store(msg)
         if isinstance(msg.message, AIMessage):
-            self.context_manager.add_message(user_message)
-            self.context_manager.add_message(msg)
+            self.context_manager.add_chat(user_message, msg)
         return msg

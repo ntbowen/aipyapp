@@ -37,6 +37,12 @@ class ChatMessage(InstanceTrackerMixin, BaseModel):
     def usage(self):
         return self.message.usage if self.message is not None else Counter()
     
+    @property
+    def total_tokens(self):
+        if self.role == MessageRole.ASSISTANT and self.message.usage:
+            return self.message.usage.get('total_tokens', 0)
+        return None
+    
     def dict(self) -> dict:
         return self.message.dict() if self.message is not None else {}
     
