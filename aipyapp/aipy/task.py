@@ -24,7 +24,7 @@ from .events import TypedEventBus
 from .multimodal import MMContent   
 from .context import ContextManager, ContextData
 from .toolcalls import ToolCallProcessor
-from .chat import MessageStorage, ChatMessage, UserMessage
+from .chat import MessageStorage, ChatMessage
 from .step import Step, StepData
 from .blocks import CodeBlocks
 from .client import Client
@@ -127,6 +127,21 @@ class Task(Stoppable):
     @property
     def instruction(self):
         return self.steps[0].data.instruction if self.steps else None
+
+    def use(self, llm: str) -> bool:
+        """ for cmd_llm use
+        """
+        return self.client.use(llm)
+
+    def run_block(self, name: str) -> bool:
+        """ for cmd_block run
+        """
+        block = self.blocks.get(name)
+        if not block:
+            return False
+        result = self.runner(block)
+        self.emit('exec_completed', result=result, block=block)
+        return True
 
     def emit(self, event_name: str, **kwargs):
         event = self.event_bus.emit(event_name, **kwargs)
@@ -285,7 +300,7 @@ class Task(Stoppable):
         if self.settings.get('share_result'):
             self.sync_to_cloud()
 
-    def prepare_user_prompt(self, instruction: str, first_run: bool=False) -> UserMessage:
+    def prepare_user_prompt(self, instruction: str, first_run: bool=False) -> ChatMessage:
         """处理多模态内容并验证模型能力"""
         mmc = MMContent(instruction, base_path=self.workdir)
         try:
@@ -303,7 +318,7 @@ class Task(Stoppable):
         elif not self.client.has_capability(message):
             raise TaskInputError(T("Current model does not support this content"))
 
-        return message
+        return self.message_storage.store(message)
 
     def run(self, instruction: str, title: str | None = None):
         """
@@ -320,17 +335,14 @@ class Task(Stoppable):
         os.chdir(self.cwd)
         self._saved = False
 
-        # 先存储用户消息，获取ChatMessage
-        stored_user_message = self.message_storage.store(user_message)
-        
         step = Step(self, StepData(
-            initial_instruction=stored_user_message,
+            initial_instruction=user_message,
             instruction=instruction, 
             title=title
         ))
         self.steps.append(step)
         self.emit('step_started', instruction=instruction, step=len(self.steps) + 1, title=title)
-        response = step.run(user_message)
+        response = step.run()
         self.emit('step_completed', summary=step.get_summary(), response=response)
 
         # Step级别的上下文清理

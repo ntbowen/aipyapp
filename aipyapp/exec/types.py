@@ -30,5 +30,5 @@ class PythonResult(ExecResult):
         try:
             success = self.states['success']    
         except:
-            success = False
+            success = True
         return not success

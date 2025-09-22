@@ -277,8 +277,7 @@ class DisplayClassic(RichDisplayPlugin):
         block = typed_event.block
         
         try:
-            success = result['__state__']['success']
-            style = "success" if success else "error"
+            style = "error" if result.has_error() else "success"
         except:
             style = "warning"
         
@@ -287,7 +286,7 @@ class DisplayClassic(RichDisplayPlugin):
         tree = Tree(title)
         
         # JSON格式化和高亮显示结果
-        json_result = json.dumps(result, ensure_ascii=False, indent=2, default=str)
+        json_result = result.model_dump_json(indent=2, exclude_none=True)
         tree.add(Syntax(json_result, "json", word_wrap=True))
         self.console.print(tree)
 

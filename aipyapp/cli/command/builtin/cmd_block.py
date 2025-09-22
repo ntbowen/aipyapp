@@ -14,7 +14,7 @@ class BlockCommand(ParserCommand):
     description = T("Manage code blocks")
     modes = [CommandMode.TASK]
     
-    def get_arg_values(self, name, subcommand=None) -> Optional[List[Tuple[str, str]]]:
+    def get_arg_values(self, name, subcommand=None, partial=None) -> Optional[List[Tuple[str, str]]]:
         if name == 'name':
             ctx = self.manager.context
             return [(block.name, block.lang) for block in ctx.task.blocks]
@@ -50,12 +50,7 @@ class BlockCommand(ParserCommand):
     def cmd_run(self, args, ctx):
         """运行代码块"""
         task = ctx.task
-        block = task.blocks.get(args.name)
-        if not block:
-            ctx.console.print(T("Code block not found"))
-            return False
-        task.runner.run_block(block)
-        return True
+        return task.run_block(args.name)
     
     def cmd_list(self, args, ctx):
         """列出所有代码块"""

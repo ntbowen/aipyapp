@@ -26,7 +26,7 @@ class Round(BaseModel):
     # 工具调用执行结果
     toolcall_results: List[ToolCallResult] | None = None
     # 系统对执行结果的回应消息(如果有)
-    system_feedback: UserMessage | None = None
+    system_feedback: ChatMessage | None = None
     # 上下文清理标记：是否已从上下文中删除
     context_deleted: bool = Field(default=False, description="Whether this round's messages have been deleted from context")
 
@@ -89,19 +89,14 @@ class StepData(BaseModel):
     # 每个Round包含完整的对话+执行循环  
     rounds: List[Round] = Field(default_factory=list)
     
-    # LLM的最终回复作为Step级别的字段
-    final_response: Response | None = None
-    
     events: List[BaseEvent.get_subclasses_union()] = Field(default_factory=list)
     
     @property
-    def result(self):
-        return self.final_response
+    def final_response(self):
+        return self.rounds[-1].llm_response if self.rounds else None
     
     def add_round(self, round: Round):
         self.rounds.append(round)
-        # 更新最终回复
-        self.final_response = round.llm_response
 
 class Step:
     def __init__(self, task: Task, data: StepData):
@@ -152,13 +147,11 @@ class Step:
             toolcall_results = None
         return toolcall_results
     
-    def run(self, user_message: UserMessage) -> Response:
+    def run(self) -> Response:
         max_rounds = self.task.max_rounds
         message_storage = self.task.message_storage
-        
-        # 使用已经存储的初始指令
         user_message = self.data.initial_instruction
-        
+
         while len(self['rounds']) < max_rounds:
             # 请求LLM回复
             response = self.request(user_message)
@@ -172,20 +165,15 @@ class Step:
             
             # 生成系统反馈消息
             system_feedback = round.get_system_feedback(self.task.prompts)
-            if system_feedback:
-                round.system_feedback = message_storage.store(system_feedback)
-            
-            # 添加Round到Step
-            self._data.add_round(round)
-            
-            if not round.should_continue():
+            if not system_feedback:
                 break
 
-            # 下一轮使用系统反馈作为用户输入
+            round.system_feedback = message_storage.store(system_feedback)
+            self._data.add_round(round)
             user_message = round.system_feedback
 
         self['end_time'] = time.time()
-        return response
+        return self.data.final_response
 
     def get_summary(self):
         summary = dict(self._summary)

@@ -8,6 +8,7 @@ import time
 from loguru import logger
 
 from .response import Response, TaskCompleted, TaskCannotContinue
+from ..exec import ExecResult, ProcessResult, PythonResult
 from .blocks import CodeBlock
 from .chat import ChatMessage
 from .toolcalls import ToolCall, ToolCallResult
@@ -223,7 +224,7 @@ class ExecStartedEvent(BaseEvent):
 class ExecCompletedEvent(BaseEvent):
     """Event fired when code execution completes"""
     name: Literal["exec_completed"] = "exec_completed"
-    result: Dict[str, Any] = Field(..., title="Result", description="Execution result data")
+    result: Union[ExecResult, ProcessResult, PythonResult] = Field(..., title="Result", description="Execution result data")
     block: CodeBlock = Field(..., title="Block", description="Code block that was executed")
 
 # ==================== Code Editing Events ====================
