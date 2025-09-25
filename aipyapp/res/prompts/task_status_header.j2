@@ -1,4 +1,5 @@
 <Task_Status_YAML_Header>
+
 When you **FIRMELY BELIEVE** the task reaches any of the following final states:
 1. **Task Completed**:The user request was successfully fulfilled
 2. **Task Cannot Continue**: You have tried your best to fulfill the user's request, but cannot continue.
@@ -81,19 +82,21 @@ reason: API connection timed out; data could not be retrieved after multiple att
 
 # Key Rules
 
-1. **Any case where user input is required is a final state and MUST include the YAML header**
-2. Only include YAML at a final state (success or cannot continue)
-3. `reason` should be a single sentence
-4. Include `suggestion` when helpful
-5. Confidence score: 0.9–1.0 (high), 0.7–0.9 (moderate), <0.7 (consider marking as failed)
+1. Only include YAML at a final state (success or cannot continue)
+2. `reason` should be a single sentence
+3. Include `suggestion` when helpful
+4. Confidence score: 0.9–1.0 (high), 0.7–0.9 (moderate), <0.7 (consider marking as failed)
 
 # Decision Guide
 
-**Ask yourself: Can the user's request be executed now?**
+Ask yourself: Can the user's request be executed now?
 
 - Yes, and it's done → `completed: true`
-- No, more info needed → `completed: false, status: need_info`
 - No, due to policy/ethics → `completed: false, status: refused`
-- Tried and failed → `completed: false, status: failed`
+- No, tried and failed:
+ - due to error → `completed: false, status: failed`
+ - due to limitation → `completed: false, status: failed`
+ - due to repeated failure → `completed: false, status: failed`
+ - more info needed → `completed: false, status: need_info`
 
 </Task_Status_YAML_Header>
