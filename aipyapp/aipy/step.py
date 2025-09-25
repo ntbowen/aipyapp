@@ -177,8 +177,8 @@ class Step:
 
     def get_summary(self):
         summary = dict(self._summary)
-        summary['elapsed_time'] = int(time.time() - self['start_time'])
+        summary['elapsed_time'] = int(self['end_time'] - self['start_time'])
         summary['rounds'] = len(self['rounds'])
-        summarys = "{rounds} | {time}s/{elapsed_time}s | Tokens: {input_tokens}/{output_tokens}/{total_tokens}".format(**summary)
+        summarys = "{rounds} | {elapsed_time}s | Tokens: {input_tokens}/{output_tokens}/{total_tokens}".format(**summary)
         return {'summary': summarys}
     

@@ -48,8 +48,43 @@ class ContextCommand(ParserCommand):
         task = ctx.task
         console = ctx.console
         
+        # 获取清理前的统计信息
+        stats_before = task.context_manager.get_stats()
+        
+        # 执行清理
         task.context_manager.clear()
-        console.print(T("Context cleared"), style="green")
+        
+        # 获取清理后的统计信息  
+        stats_after = task.context_manager.get_stats()
+        
+        # 计算差值
+        messages_cleared = stats_before['message_count'] - stats_after['message_count']
+        tokens_saved = stats_before['total_tokens'] - stats_after['total_tokens']
+        
+        # 显示详细结果
+        if messages_cleared > 0:
+            table = Table(title=T("Context Clear Summary"), style="green")
+            table.add_column(T("Metric"), style="cyan")
+            table.add_column(T("Before"), style="white") 
+            table.add_column(T("After"), style="white")
+            table.add_column(T("Cleared"), style="yellow")
+            
+            table.add_row(
+                T("Messages"),
+                str(stats_before['message_count']),
+                str(stats_after['message_count']),
+                str(messages_cleared)
+            )
+            table.add_row(
+                T("Tokens"),
+                str(stats_before['total_tokens']),
+                str(stats_after['total_tokens']),
+                str(tokens_saved)
+            )
+            
+            console.print(table)
+        else:
+            console.print(T("No messages to clear"), style="yellow")
     
     def cmd_stats(self, args, ctx):
         """显示上下文统计信息"""
