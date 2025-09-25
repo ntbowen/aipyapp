@@ -82,34 +82,7 @@ arguments:
 
 ## 执行任务
 
-````python
-import requests
-from bs4 import BeautifulSoup
-
-def get_google_title(url: str = "https://www.google.com") -> str:
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        # 你也可以改成其他语言，如 "zh-CN,zh;q=0.9"
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        raise SystemExit(f"Request failed: {e}")
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-    title_tag = soup.find("title")
-    return title_tag.get_text(strip=True) if title_tag else "(no title found)"
-
-if __name__ == "__main__":
-    print(get_google_title({{ url }}))
-
-````
+使用````lang嵌入执行代码块，此处省略。
 
 ## 任务说明
 

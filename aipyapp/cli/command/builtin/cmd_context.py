@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from datetime import datetime
 from rich.table import Table
 from rich.tree import Tree
 
@@ -103,8 +104,9 @@ class ContextCommand(ParserCommand):
         
         table.add_row(T("Message count"), str(stats['message_count']))
         table.add_row(T("Current token"), str(stats['total_tokens']))
-        table.add_row(T("Max tokens"), str(stats['max_tokens']))
-        table.add_row(T("Compression ratio"), f"{stats['compression_ratio']:.2f}")
+        #table.add_row(T("Max tokens"), str(stats['max_tokens']))
+        #table.add_row(T("Compression ratio"), f"{stats['compression_ratio']:.2f}")
+        table.add_row(T("Last compression"), datetime.fromtimestamp(stats['last_compression']).strftime("%Y-%m-%d %H:%M:%S") if stats['last_compression'] else T("N/A"))
         
         console.print(table)
     

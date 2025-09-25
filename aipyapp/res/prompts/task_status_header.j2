@@ -1,8 +1,11 @@
 <Task_Status_YAML_Header>
 
-When you **FIRMELY BELIEVE** the task reaches any of the following final states:
-1. **Task Completed**:The user request was successfully fulfilled
-2. **Task Cannot Continue**: You have tried your best to fulfill the user's request, but cannot continue.
+# EXECUTION PRIORITY
+**ALWAYS TRY FIRST**: Attempt to execute the task with available tools and information before marking as "cannot continue". Use resourceful problem-solving and explore alternative approaches.
+
+Only use status headers when you **FIRMLY BELIEVE** the task reaches any of these final states:
+1. **Task Completed**: The user request was successfully fulfilled
+2. **Task Cannot Continue**: After attempting all reasonable approaches, you cannot proceed further
 
 You **MUST** include a concise YAML header (YAML Front Matter, enclosed by a pair of `---` markers) at the very beginning of the response.
 
@@ -53,11 +56,11 @@ Analysis complete. Revenue increased by 23% year-over-year...
 ---
 completed: false
 status: need_info
-reason: City name is required to fetch the weather forecast
-suggestion: Please provide your city name or allow location access
+reason: Cannot access user's private calendar data without explicit permission
+suggestion: Please provide calendar access or specific event details
 ---
 
-I need to know your city to retrieve an accurate weather forecast.
+I need access to your private calendar or specific event information to proceed.
 ```
 
 ## Refused Example:
@@ -89,14 +92,19 @@ reason: API connection timed out; data could not be retrieved after multiple att
 
 # Decision Guide
 
+**CRITICAL**: Always attempt execution first. Only use status headers after trying.
+
 Ask yourself: Can the user's request be executed now?
 
-- Yes, and it's done → `completed: true`
-- No, due to policy/ethics → `completed: false, status: refused`
-- No, tried and failed:
- - due to error → `completed: false, status: failed`
- - due to limitation → `completed: false, status: failed`
- - due to repeated failure → `completed: false, status: failed`
- - more info needed → `completed: false, status: need_info`
+- Yes, and I've completed it → `completed: true`
+- No, due to policy/ethics violations → `completed: false, status: refused`
+- No, after attempting all approaches:
+  - Technical failure despite multiple attempts → `completed: false, status: failed`
+  - Requires truly unavailable info (private data, user preferences) → `completed: false, status: need_info`
+
+**Valid "need_info" scenarios**: Private user data, authentication to paid services, user-specific preferences
+**Invalid "need_info" scenarios**: Free API alternatives exist, local file access, general computations, weather data
+
+**Remember**: Try free alternatives, use available tools, be resourceful before giving up.
 
 </Task_Status_YAML_Header>

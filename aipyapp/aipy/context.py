@@ -57,6 +57,19 @@ class ContextConfig(BaseModel):
     preserve_system: bool = Field(default=True, description="是否保留系统消息")
     preserve_recent: int = Field(default=3, gt=0, description="保留最近几轮对话")
 
+    def set_strategy(self, strategy: str) -> bool:
+        try:
+            # 尝试通过值创建枚举实例
+            self.strategy = ContextStrategy(strategy)
+            return True
+        except ValueError:
+            # 如果值不存在，尝试通过成员名称
+            try:
+                self.strategy = ContextStrategy[strategy.upper()]
+                return True
+            except KeyError:
+                return False
+
 class IContextStrategy(ABC):
     """上下文压缩策略接口"""
     def __init__(self, message_store: MessageStorage, config: ContextConfig, 
