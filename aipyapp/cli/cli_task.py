@@ -255,12 +255,15 @@ def main(settings):
         return
     
     cmd = settings.get('exec_cmd')
-    if cmd:
-        tm.new_task().run(cmd)
-        return
     run_json = settings.get('run_json')
-    if run_json:
-        task = tm.load_task(run_json)
-        task.run('Run the task again')
+    if cmd or run_json:
+        if run_json:
+            task = tm.load_task(run_json)
+        else:
+            task = tm.new_task()
+
+        cmd = cmd or 'Run the task again'
+        task.run(cmd)
         return
+    
     InteractiveConsole(tm, console, settings).run()
