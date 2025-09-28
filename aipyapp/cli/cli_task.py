@@ -264,6 +264,7 @@ def main(settings):
 
         cmd = cmd or 'Run the task again'
         task.run(cmd)
+        task.done()
         return
     
     InteractiveConsole(tm, console, settings).run()
