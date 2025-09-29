@@ -64,6 +64,29 @@ class DisplayClassic(RichDisplayPlugin):
         tree.add(title)
         self.console.print(tree)
 
+    def on_subtask_started(self, event):
+        """子任务开始事件处理"""
+        subtask_id = event.typed_event.subtask_id
+        instruction = event.typed_event.instruction
+        title = event.typed_event.title or instruction
+
+        tree = Tree(f"🔄 {T('SubTask started')}: {subtask_id[:8]}")
+        tree.add(title)
+        self.console.print(tree)
+
+    def on_subtask_completed(self, event):
+        """子任务完成事件处理"""
+        subtask_id = event.typed_event.subtask_id
+        execution_time = event.typed_event.execution_time
+        steps_count = event.typed_event.steps_count
+
+        icon = "✅"
+
+        tree = Tree(f"{icon} {T('SubTask completed')}: {subtask_id[:8]}")
+        tree.add(f"{T('Execution time')}: {execution_time:.1f}s")
+        tree.add(f"{T('Steps')}: {steps_count}")
+        self.console.print(tree)
+
     def on_request_started(self, event):
         """查询开始事件处理"""
         llm = event.typed_event.llm
@@ -169,10 +192,12 @@ class DisplayClassic(RichDisplayPlugin):
         if response.tool_calls:
             sub_tree = tree.add(T('Tool Calls'))
             for tool_call in response.tool_calls:
-                if tool_call.name == 'Exec':    
+                if tool_call.name == 'Exec':
                     sub_tree.add(f"{T('Exec')}: {tool_call.arguments.name}")
                 elif tool_call.name == 'Edit':
                     sub_tree.add(f"{T('Edit')}: {tool_call.arguments.name}")
+                elif tool_call.name == 'SubTask':
+                    sub_tree.add(f"{T('SubTask')}: {tool_call.arguments.instruction[:50]}...")
                 else:
                     sub_tree.add(f"{tool_call.name.value}: {tool_call.arguments}")
             

@@ -21,9 +21,10 @@ Notes:
 </code_block_markup>
 
 <tool_call_commands>
-To execute code blocks or modify them, use the unified ToolCall format:
+To execute code blocks, modify them, or create subtasks, use the unified ToolCall format:
   <!-- ToolCall: {"name": "Exec", "arguments": {"name": "block_name_to_execute"}} -->
   <!-- ToolCall: {"name": "Edit", "arguments": {"name": "block_name", "old": "code_to_replace", "new": "replacement_code", "replace_all": false}} -->
+  <!-- ToolCall: {"name": "SubTask", "arguments": {"instruction": "task_instruction", "title": "optional_title", "inherit_context": false}} -->
 
 Rules:
 - Multiple ToolCall commands can be used in a single message.
@@ -43,13 +44,18 @@ Available tools and their parameters:
 **Exec Tool**: Execute a code block
 - `name`: Code block name to execute (string, required)
 
-**Edit Tool**: Modify existing code blocks incrementally  
+**Edit Tool**: Modify existing code blocks incrementally
 - `name`: Code block name to edit (string, required)
 - `old`: Exact string to find and replace (string, required, must match exactly including whitespace)
 - `new`: Replacement string (string, required, can be empty for deletion)
 - `replace_all`: Replace all occurrences (boolean, optional, default: false)
   - `false`: Replace only the first occurrence (safer, prevents accidental multiple replacements)
   - `true`: Replace all occurrences (use when you want to replace multiple instances)
+
+**SubTask Tool**: Create and execute an independent subtask with isolated context
+- `instruction`: The instruction/task for the subtask to execute (string, required)
+- `title`: Optional descriptive title for the subtask (string, optional)
+- `inherit_context`: Whether to inherit parent task context summary (boolean, optional, default: false)
 
 Benefits of editing vs. rewriting full blocks:
 - More efficient (smaller messages, less tokens)
@@ -88,6 +94,9 @@ Example 3 - Multiple operations in sequence:
 
 Example 4 - Editing with replace_all:
 <!-- ToolCall: {"name": "Edit", "arguments": {"name": "fetch_data", "old": "resp", "new": "response", "replace_all": true}} -->
+
+Example 5 - Creating a subtask:
+<!-- ToolCall: {"name": "SubTask", "arguments": {"instruction": "Calculate the factorial of 5 and explain the mathematical steps", "title": "Factorial Calculation"}} -->
 </good_example>
 
 </output_format>

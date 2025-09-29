@@ -52,7 +52,32 @@ class DisplayModern(RichDisplayPlugin):
         panel = Panel(content, title=title_text, border_style="blue")
         self.console.print(panel)
         self.console.print()
-        
+
+    def on_subtask_started(self, event):
+        """子任务开始事件处理"""
+        subtask_id = event.typed_event.subtask_id
+        instruction = event.typed_event.instruction
+        title = event.typed_event.title or instruction
+
+        title_text = Text(f"🔄 子任务开始: {subtask_id[:8]}", style="bold yellow")
+        content = Text(title, style="white")
+        panel = Panel(content, title=title_text, border_style="yellow")
+        self.console.print(panel)
+
+    def on_subtask_completed(self, event):
+        """子任务完成事件处理"""
+        subtask_id = event.typed_event.subtask_id
+        execution_time = event.typed_event.execution_time
+        steps_count = event.typed_event.steps_count
+
+        icon = "✅"
+        style = "green"
+
+        title_text = Text(f"{icon} 子任务完成: {subtask_id[:8]}", style=f"bold {style}")
+        content = Text(f"执行时间: {execution_time:.1f}s | 步数: {steps_count}", style="white")
+        panel = Panel(content, title=title_text, border_style=style)
+        self.console.print(panel)
+
     def on_step_started(self, event):
         """步骤开始事件处理"""
         instruction = event.typed_event.instruction
@@ -152,7 +177,11 @@ class DisplayModern(RichDisplayPlugin):
         
         if response.tool_calls:
             tool_count = len(response.tool_calls)
-            self.console.print(f"🔧 {T('Found {} tool calls').format(tool_count)}", style="dim blue")
+            subtask_count = sum(1 for tool_call in response.tool_calls if tool_call.name.value == 'SubTask')
+            if subtask_count > 0:
+                self.console.print(f"🔧 {T('Found {} tool calls ({} SubTasks)').format(tool_count, subtask_count)}", style="dim blue")
+            else:
+                self.console.print(f"🔧 {T('Found {} tool calls').format(tool_count)}", style="dim blue")
                 
     def on_exec_started(self, event):
         """代码执行开始事件处理"""

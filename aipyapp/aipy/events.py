@@ -177,6 +177,25 @@ class TaskStatusEvent(BaseEvent):
     name: Literal["task_status"] = "task_status"
     status: TaskCompleted | TaskCannotContinue = Field(..., title="Status", description="Current task status information")
 
+class SubTaskStartedEvent(BaseEvent):
+    """Event fired when a subtask starts"""
+    name: Literal["subtask_started"] = "subtask_started"
+    subtask_id: str = Field(..., title="SubTask ID", description="Unique identifier for the subtask")
+    parent_task_id: str = Field(..., title="Parent Task ID", description="ID of the parent task")
+    instruction: str = Field(..., title="Instruction", description="SubTask instruction")
+    title: Optional[str] = Field(None, title="Title", description="Optional title for the subtask")
+    inherit_context: bool = Field(False, title="Inherit Context", description="Whether subtask inherits parent context")
+
+class SubTaskCompletedEvent(BaseEvent):
+    """Event fired when a subtask completes"""
+    name: Literal["subtask_completed"] = "subtask_completed"
+    subtask_id: str = Field(..., title="SubTask ID", description="Unique identifier for the subtask")
+    parent_task_id: str = Field(..., title="Parent Task ID", description="ID of the parent task")
+    status: str = Field(..., title="Status", description="SubTask completion status")
+    result: Optional[str] = Field(None, title="Result", description="SubTask result content")
+    execution_time: float = Field(..., title="Execution Time", description="Time taken to execute subtask")
+    steps_count: int = Field(..., title="Steps Count", description="Number of steps executed in subtask")
+
 # ==================== LLM Interaction Events ====================
 
 class RequestStartedEvent(BaseEvent):

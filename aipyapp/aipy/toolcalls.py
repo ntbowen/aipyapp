@@ -21,6 +21,7 @@ class ToolName(str, Enum):
     EDIT = "Edit"
     EXEC = "Exec"
     MCP = "MCP"
+    SUBTASK = "SubTask"
 
 class ToolResult(BaseModel):
     """Tool result"""
@@ -60,10 +61,24 @@ class MCPToolResult(ToolResult):
     """MCP tool result"""
     result: Dict[str, Any] = Field(default_factory=dict)
 
+class SubTaskArgs(BaseModel):
+    """SubTask tool arguments"""
+    instruction: str = Field(title="SubTask instruction", min_length=1, strip_whitespace=True)
+    title: Optional[str] = Field(default=None, title="SubTask title")
+    inherit_context: bool = Field(default=False, title="Whether to inherit parent context")
+
+class SubTaskResult(ToolResult):
+    """SubTask tool result"""
+    subtask_id: str = Field(title="SubTask ID")
+    status: str = Field(title="SubTask status")  # 'completed', 'failed', 'timeout'
+    result: Optional[str] = Field(default=None, title="SubTask result content")
+    execution_time: float = Field(title="Execution time in seconds")
+    steps_count: int = Field(title="Number of steps executed")
+
 class ToolCall(BaseModel):
     """Tool call"""
     name: ToolName
-    arguments: Union[ExecToolArgs, EditToolArgs, MCPToolArgs]
+    arguments: Union[ExecToolArgs, EditToolArgs, MCPToolArgs, SubTaskArgs]
 
     @model_validator(mode='before')
     @classmethod
@@ -82,7 +97,7 @@ class ToolCall(BaseModel):
 class ToolCallResult(BaseModel):
     """Tool call result"""
     tool_name: ToolName
-    result: Union[ExecToolResult, EditToolResult, MCPToolResult] = Field(title="Tool result")
+    result: Union[ExecToolResult, EditToolResult, MCPToolResult, SubTaskResult] = Field(title="Tool result")
 
 class ToolCallProcessor:
     """工具调用处理器 - 高级接口"""
@@ -148,6 +163,8 @@ class ToolCallProcessor:
             result = self._call_edit(task, tool_call)
         elif tool_call.name == ToolName.MCP:
             result = self._call_mcp(task, tool_call)
+        elif tool_call.name == ToolName.SUBTASK:
+            result = self._call_subtask(task, tool_call)
         else:
             result = ToolResult(error=Error('Unknown tool'))
 
@@ -227,3 +244,47 @@ class ToolCallProcessor:
         return MCPToolResult(
             result=result
         )
+
+    def _call_subtask(self, task: 'Task', tool_call: ToolCall) -> SubTaskResult:
+        """执行 SubTask 工具"""
+        from .subtask import SubTaskManager
+
+        args = tool_call.arguments
+
+        try:
+            # 确保任务有SubTaskManager
+            if not hasattr(task, 'subtask_manager') or task.subtask_manager is None:
+                task.subtask_manager = SubTaskManager(task)
+
+            # 创建子任务
+            subtask = task.subtask_manager.create_subtask(
+                instruction=args.instruction,
+                title=args.title,
+                inherit_context=args.inherit_context
+            )
+
+            # 运行子任务
+            result_dict = task.subtask_manager.run_subtask(
+                subtask=subtask,
+                instruction=args.instruction,
+                title=args.title
+            )
+
+            return SubTaskResult(
+                subtask_id=result_dict["subtask_id"],
+                status=result_dict["status"],
+                result=result_dict["result"],
+                execution_time=result_dict["execution_time"],
+                steps_count=result_dict["steps_count"]
+            )
+
+        except Exception as e:
+            self.log.exception("SubTask execution failed")
+            return SubTaskResult(
+                subtask_id="unknown",
+                status="failed",
+                result=f"SubTask execution failed: {str(e)}",
+                execution_time=0.0,
+                steps_count=0,
+                error=Error.new("SubTask execution failed", exception=str(e))
+            )

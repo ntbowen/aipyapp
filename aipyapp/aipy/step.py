@@ -159,17 +159,19 @@ class Step:
             
             # 创建新的Round，包含LLM回复
             round = Round(llm_response=response)
-            
+
             # 处理工具调用
             round.toolcall_results = self.process(response)
-            
+
+            # 始终将round添加到rounds列表中
+            self._data.add_round(round)
+
             # 生成系统反馈消息
             system_feedback = round.get_system_feedback(self.task.prompts)
             if not system_feedback:
                 break
 
             round.system_feedback = message_storage.store(system_feedback)
-            self._data.add_round(round)
             user_message = round.system_feedback
 
         self['end_time'] = time.time()

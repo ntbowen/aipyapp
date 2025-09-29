@@ -112,6 +112,11 @@ class Task(Stoppable):
         # Step Cleaner
         self.step_cleaner = SimpleStepCleaner(self.context_manager)
 
+        # SubTask Support
+        self.is_subtask = False
+        self.parent_task_id = None
+        self.subtask_manager = None
+
         # Plugins
         plugins: dict[str, TaskPlugin] = {}
         for plugin_name, plugin_data in self.role.plugins.items():
@@ -376,6 +381,7 @@ class Task(Stoppable):
 
         self._auto_save()
         self.log.info('Step done', rounds=len(step.data.rounds))
+        return response
 
     def sync_to_cloud(self):
         """ Sync result
