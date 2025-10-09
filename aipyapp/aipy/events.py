@@ -151,14 +151,17 @@ class TaskStartedEvent(BaseEvent):
     """Event fired when a task starts"""
     name: Literal["task_started"] = "task_started"
     instruction: str = Field(..., title="Instruction", description="User instruction for the task")
-    task_id: str = Field(..., title="Task ID", description="Unique identifier for the task")
     title: Optional[str] = Field(None, title="Title", description="Optional title for the task")
-
+    task_id: str = Field(..., title="Task ID", description="Unique identifier for the task")
+    parent_id: str|None = Field(..., title="Parent ID", description="Unique identifier for the parent task")
+    
 class TaskCompletedEvent(BaseEvent):
     """Event fired when a task ends"""
     name: Literal["task_completed"] = "task_completed"
     path: Optional[str] = Field(None, title="Path", description="Path where task results are saved")
-
+    task_id: str = Field(..., title="Task ID", description="Unique identifier for the task")
+    parent_id: str|None = Field(..., title="Parent ID", description="Unique identifier for the parent task")
+ 
 class StepStartedEvent(BaseEvent):
     """Event fired when a conversation round starts"""
     name: Literal["step_started"] = "step_started"
@@ -176,25 +179,6 @@ class TaskStatusEvent(BaseEvent):
     """Event fired when task status changes"""
     name: Literal["task_status"] = "task_status"
     status: TaskCompleted | TaskCannotContinue = Field(..., title="Status", description="Current task status information")
-
-class SubTaskStartedEvent(BaseEvent):
-    """Event fired when a subtask starts"""
-    name: Literal["subtask_started"] = "subtask_started"
-    subtask_id: str = Field(..., title="SubTask ID", description="Unique identifier for the subtask")
-    parent_task_id: str = Field(..., title="Parent Task ID", description="ID of the parent task")
-    instruction: str = Field(..., title="Instruction", description="SubTask instruction")
-    title: Optional[str] = Field(None, title="Title", description="Optional title for the subtask")
-    inherit_context: bool = Field(False, title="Inherit Context", description="Whether subtask inherits parent context")
-
-class SubTaskCompletedEvent(BaseEvent):
-    """Event fired when a subtask completes"""
-    name: Literal["subtask_completed"] = "subtask_completed"
-    subtask_id: str = Field(..., title="SubTask ID", description="Unique identifier for the subtask")
-    parent_task_id: str = Field(..., title="Parent Task ID", description="ID of the parent task")
-    status: str = Field(..., title="Status", description="SubTask completion status")
-    result: Optional[str] = Field(None, title="Result", description="SubTask result content")
-    execution_time: float = Field(..., title="Execution Time", description="Time taken to execute subtask")
-    steps_count: int = Field(..., title="Steps Count", description="Number of steps executed in subtask")
 
 # ==================== LLM Interaction Events ====================
 

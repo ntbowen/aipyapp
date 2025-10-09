@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from __future__ import annotations
 import os
 import locale
 import platform
@@ -10,12 +11,15 @@ import shutil
 import subprocess
 import re
 from datetime import datetime
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .. import __respath__
 from .toolcalls import ToolCallResult
+
+if TYPE_CHECKING:
+    from .task import Task
 
 def check_commands(commands):
     """
@@ -103,11 +107,12 @@ class Prompts:
         all_vars = {**extra_vars, **kwargs}
         return self.get_prompt('default', **all_vars)
 
-    def get_task_prompt(self, instruction: str, gui: bool = False) -> str:
+    def get_task_prompt(self, instruction: str, gui: bool = False, parent: Task | None = None) -> str:
         """
         获取任务提示
         :param instruction: 用户输入的字符串
         :param gui: 是否使用 GUI 模式
+        :param parent: 父任务（如果有）
         :return: 渲染后的字符串
         """
         contexts = {}
@@ -115,7 +120,7 @@ class Prompts:
         if not gui:
             contexts['TERM'] = os.environ.get('TERM', 'unknown')
         constraints = {}
-        return self.get_prompt('task', instruction=instruction, contexts=contexts, constraints=constraints, gui=gui)
+        return self.get_prompt('task', instruction=instruction, contexts=contexts, constraints=constraints, gui=gui, parent=parent)
     
     def get_results_prompt(self, results: dict) -> str:
         """

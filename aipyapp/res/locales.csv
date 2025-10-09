@@ -1,5 +1,8 @@
 en,zh,jp
+"Task ID","任务ID","タスクID"
+"Parent ID","父任务ID","親タスクID"
 "Task processing started","任务处理开始","タスクの処理開始"
+"SubTask processing started","子任务处理开始","サブタスクの処理開始"
 "Instruction processing started","指令处理开始","処理命令の開始"
 "Start executing code block {}","开始执行代码块 {}","コードブロック {} の実行開始"
 "Execution result {}","执行结果 {}","実行結果 {}"

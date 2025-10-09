@@ -65,7 +65,6 @@ class SubTaskArgs(BaseModel):
     """SubTask tool arguments"""
     instruction: str = Field(title="SubTask instruction", min_length=1, strip_whitespace=True)
     title: Optional[str] = Field(default=None, title="SubTask title")
-    inherit_context: bool = Field(default=False, title="Whether to inherit parent context")
 
 class SubTaskResult(ToolResult):
     """SubTask tool result"""
@@ -77,6 +76,7 @@ class SubTaskResult(ToolResult):
 
 class ToolCall(BaseModel):
     """Tool call"""
+    id: str = Field(title='Unique ID for this ToolCall')
     name: ToolName
     arguments: Union[ExecToolArgs, EditToolArgs, MCPToolArgs, SubTaskArgs]
 
@@ -96,7 +96,8 @@ class ToolCall(BaseModel):
 
 class ToolCallResult(BaseModel):
     """Tool call result"""
-    tool_name: ToolName
+    id: str = Field(title='Unique ID for this ToolCall')
+    name: ToolName
     result: Union[ExecToolResult, EditToolResult, MCPToolResult, SubTaskResult] = Field(title="Tool result")
 
 class ToolCallProcessor:
@@ -129,7 +130,7 @@ class ToolCallProcessor:
                         block_name=block_name
                     )
                     results.append(ToolCallResult(
-                        tool_name=name,
+                        name=name,
                         result=ExecToolResult(
                             block_name=block_name,
                             error=error
@@ -169,7 +170,8 @@ class ToolCallProcessor:
             result = ToolResult(error=Error('Unknown tool'))
 
         toolcall_result = ToolCallResult(
-            tool_name=tool_call.name,
+            id=tool_call.id,
+            name=tool_call.name,
             result=result
         )
         task.emit('tool_call_completed', result=toolcall_result)

@@ -14,8 +14,6 @@ from .chat import ChatMessage
 from .response import Response
 from .toolcalls import ToolCallResult, ToolName
 from .prompts import Prompts
-from .events import BaseEvent
-from .types import DataMixin
 
 if TYPE_CHECKING:
     from .task import Task
@@ -72,7 +70,7 @@ class Round(BaseModel):
             return True
         
         # 对于 Exec 工具，还需要检查实际执行结果
-        if tool_call_result.tool_name == ToolName.EXEC:
+        if tool_call_result.name == ToolName.EXEC:
             exec_result = tool_call_result.result.result
             return exec_result.has_error()
         
@@ -88,8 +86,6 @@ class StepData(BaseModel):
     
     # 每个Round包含完整的对话+执行循环  
     rounds: List[Round] = Field(default_factory=list)
-    
-    events: List[BaseEvent.get_subclasses_union()] = Field(default_factory=list)
     
     @property
     def final_response(self):
@@ -152,6 +148,7 @@ class Step:
         message_storage = self.task.message_storage
         user_message = self.data.initial_instruction
 
+        response = None
         while len(self['rounds']) < max_rounds:
             # 请求LLM回复
             response = self.request(user_message)
@@ -175,7 +172,7 @@ class Step:
             user_message = round.system_feedback
 
         self['end_time'] = time.time()
-        return self.data.final_response
+        return response
 
     def get_summary(self):
         summary = dict(self._summary)

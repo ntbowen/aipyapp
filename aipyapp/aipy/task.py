@@ -6,21 +6,22 @@ from __future__ import annotations
 import os
 import json
 import uuid
+import zlib
+import base64
 from typing import List, Union, TYPE_CHECKING
 from pathlib import Path
-from collections import namedtuple
 from importlib.resources import read_text
 
 import requests
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_serializer, field_validator
 from loguru import logger
 
 from .. import T, __respkg__, Stoppable, TaskPlugin
 from ..exec import BlockExecutor
-from ..llm import SystemMessage
+from ..llm import SystemMessage, UserMessage
 from .runtime import CliPythonRuntime
-from .utils import get_safe_filename, validate_file
-from .events import TypedEventBus
+from .utils import safe_rename, validate_file
+from .events import TypedEventBus, BaseEvent
 from .multimodal import MMContent   
 from .context import ContextManager, ContextData
 from .toolcalls import ToolCallProcessor
@@ -63,43 +64,94 @@ class TaskData(BaseModel):
     blocks: CodeBlocks = Field(default_factory=CodeBlocks)
     context: ContextData = Field(default_factory=ContextData)
     message_storage: MessageStorage = Field(default_factory=MessageStorage)
-    
+    events: List[BaseEvent.get_subclasses_union()] = Field(default_factory=list)
+
+    @field_serializer('events')
+    def serialize_events(self, events: List, _info):
+        """序列化时压缩 events 字段"""
+        if not events:
+            return None
+        # 将 events 序列化为 JSON 字符串
+        json_str = json.dumps([e.model_dump() for e in events], ensure_ascii=False)
+        # 使用 zlib 压缩
+        compressed = zlib.compress(json_str.encode('utf-8'), level=9)
+        # Base64 编码以便存储为字符串
+        return base64.b64encode(compressed).decode('ascii')
+
+    @field_validator('events', mode='before')
+    @classmethod
+    def deserialize_events(cls, v):
+        """反序列化时解压 events 字段"""
+        if v is None or v == []:
+            return []
+        if isinstance(v, list):
+            # 已经是列表，直接返回（可能来自内存中的对象）
+            return v
+        if isinstance(v, str):
+            # 从压缩字符串恢复
+            try:
+                compressed = base64.b64decode(v.encode('ascii'))
+                json_str = zlib.decompress(compressed).decode('utf-8')
+                events_data = json.loads(json_str)
+                # 需要重新构造事件对象
+                return events_data  # Pydantic 会自动验证和构造
+            except Exception as e:
+                logger.warning(f"Failed to decompress events: {e}")
+                return []
+        return v
+
     def add_step(self, step: StepData):
         self.steps.append(step)
 
 class Task(Stoppable):
-    def __init__(self, manager: TaskManager, data: TaskData | None = None):
+    def __init__(self, manager: TaskManager, data: TaskData | None = None, parent: Task | None = None):
         super().__init__()
         data = data or TaskData()
+
+        # Phase 1: Initialize basic attributes (no dependencies)
+        self.data = data
+        self.parent = parent
         self.task_id = data.id
         self.manager = manager
         self.settings = manager.settings
         self.log = logger.bind(src='task', id=self.task_id)
-
-        # Basic properties
-        self.workdir = manager.cwd
-        self.event_bus = TypedEventBus()
-        self.cwd = self.workdir / self.task_id
+        self.cwd = manager.cwd / self.task_id if not parent else parent.cwd / self.task_id
         self.gui = manager.settings.gui
         self._saved = False
         self.max_rounds = manager.settings.get('max_rounds', MAX_ROUNDS)
         self.role = manager.role_manager.current_role
+        
+        # Phase 2: Initialize data objects (minimal dependencies)
+        if parent:
+            data.context = parent.context.model_copy(deep=True)
+            data.message_storage = parent.message_storage.model_copy(deep=True)
+            #data.blocks = parent.blocks.model_copy(deep=True)
 
-        # TaskData Objects
-        self.steps: List[Step] = [Step(self, step_data) for step_data in data.steps]
         self.blocks = data.blocks
         self.message_storage = data.message_storage
         self.context = data.context
-        self.context_manager = ContextManager(self.message_storage, self.context, manager.settings.get('context_manager'))
-
-        # Display
-        if manager.display_manager:
-            self.display = manager.display_manager.create_display_plugin()
-            self.event_bus.add_listener(self.display)
+        self.events = data.events
+        
+        # Phase 3: Initialize managers and processors (depend on Phase 2)
+        self.event_bus = TypedEventBus() if not parent else parent.event_bus
+        self.context_manager = ContextManager(
+            self.message_storage,
+            self.context,
+            manager.settings.get('context_manager')
+        )
+        self.tool_call_processor = ToolCallProcessor() if not parent else parent.tool_call_processor
+        
+        # Phase 4: Initialize display (depends on event_bus)
+        if not parent:
+            if manager.display_manager:
+                self.display = manager.display_manager.create_display_plugin()
+                self.event_bus.add_listener(self.display)
+            else:
+                self.display = None
         else:
-            self.display = None
-
-        # Objects for steps
+            self.display = parent.display
+        
+        # Phase 5: Initialize execution components (depend on task)
         self.mcp = manager.mcp
         self.prompts = manager.prompts
         self.client_manager = manager.client_manager
@@ -107,17 +159,21 @@ class Task(Stoppable):
         self.runner = BlockExecutor()
         self.runner.set_python_runtime(self.runtime)
         self.client = Client(self)
-        self.tool_call_processor = ToolCallProcessor()
-
-        # Step Cleaner
+        
+        # Phase 6: Initialize cleaners (depend on context_manager)
         self.step_cleaner = SimpleStepCleaner(self.context_manager)
-
-        # SubTask Support
-        self.is_subtask = False
-        self.parent_task_id = None
-        self.subtask_manager = None
-
-        # Plugins
+        
+        # Phase 7: Initialize plugins (depend on runtime and event_bus)
+        if not parent:
+            self._initialize_plugins(manager)
+        else:
+            self.plugins = parent.plugins
+        
+        # Phase 8: Initialize steps last (depend on almost everything)
+        self.steps: List[Step] = [Step(self, step_data) for step_data in data.steps]
+    
+    def _initialize_plugins(self, manager: TaskManager):
+        """Separate method to initialize plugins, improving clarity and testability"""
         plugins: dict[str, TaskPlugin] = {}
         for plugin_name, plugin_data in self.role.plugins.items():
             plugin = manager.plugin_manager.create_task_plugin(plugin_name, plugin_data)
@@ -150,9 +206,7 @@ class Task(Stoppable):
 
     def emit(self, event_name: str, **kwargs):
         event = self.event_bus.emit(event_name, **kwargs)
-        if self.steps:
-            #TODO: fix this
-            self.steps[-1].data.events.append(event)
+        self.events.append(event)
         return event
 
     def get_system_message(self) -> ChatMessage:
@@ -165,6 +219,14 @@ class Task(Stoppable):
         system_prompt = self.prompts.get_default_prompt(**params)
         msg = SystemMessage(content=system_prompt)
         return self.message_storage.store(msg)
+    
+    def new_step(self, step_data: StepData) -> Step:
+        """ 准备一个新的Step
+        """
+        self.data.add_step(step_data)
+        step = Step(self, step_data)
+        self.steps.append(step)
+        return step
     
     def delete_step(self, index: int) -> bool:
         """删除指定索引的Step并清理其上下文消息"""
@@ -208,15 +270,6 @@ class Task(Stoppable):
             'steps': len(self.steps),
         }
 
-    def get_task_data(self):
-        return TaskData(
-            id=self.task_id,
-            steps=[step.data for step in self.steps],
-            blocks=self.blocks,
-            context=self.context,
-            message_storage=self.message_storage
-        )
-    
     @classmethod
     def from_file(cls, path: Union[str, Path], manager: TaskManager) -> 'Task':
         """从文件创建 TaskState 对象"""
@@ -248,7 +301,7 @@ class Task(Stoppable):
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with open(path, 'w', encoding='utf-8') as f:
-                data = self.get_task_data()
+                data = self.data
                 f.write(data.model_dump_json(indent=2, exclude_none=True))
             self.log.info('Saved task state to file', path=str(path))
         except Exception as e:
@@ -282,32 +335,24 @@ class Task(Stoppable):
             self.log.warning('Task not started, skipping save')
             return
         
-        os.chdir(self.workdir)  # Change back to the original working directory
-        curname = self.task_id
-        if os.path.exists(curname):
+        if self.cwd.exists():
             if not self._saved:
                 self.log.warning('Task not saved, trying to save')
                 self._auto_save()
-
-            newname = get_safe_filename(self.instruction, extension=None)
-            if newname:
-                try:
-                    os.rename(curname, newname)
-                except Exception as e:
-                    self.log.exception('Error renaming task directory', curname=curname, newname=newname)
+            newname = safe_rename(self.cwd, self.instruction)
         else:
             newname = None
             self.log.warning('Task directory not found')
 
         self.log.info('Task done', path=newname)
-        self.emit('task_completed', path=newname)
+        self.emit('task_completed', path=newname, task_id=self.task_id, parent_id=self.parent.task_id if self.parent else None)
         #self.context.diagnose.report_code_error(self.runner.history)
         if self.settings.get('share_result'):
             self.sync_to_cloud()
 
     def prepare_user_prompt(self, instruction: str, first_run: bool=False) -> ChatMessage:
         """处理多模态内容并验证模型能力"""
-        mmc = MMContent(instruction, base_path=self.workdir)
+        mmc = MMContent(instruction, base_path=self.cwd.parent)
         try:
             message = mmc.message
         except Exception as e:
@@ -316,7 +361,7 @@ class Task(Stoppable):
         content = message.content
         if isinstance(content, str):
             if first_run:
-                content = self.prompts.get_task_prompt(content, gui=self.gui)
+                content = self.prompts.get_task_prompt(content, gui=self.gui, parent=self.parent)
             else:
                 content = self.prompts.get_chat_prompt(content, self.instruction)
             message.content = content
@@ -334,18 +379,19 @@ class Task(Stoppable):
         user_message = self.prepare_user_prompt(instruction, first_run)
         if first_run:
             self.context_manager.add_message(self.get_system_message())
+            self.emit('task_started', instruction=instruction, title=title, task_id=self.task_id, parent_id=self.parent.task_id if self.parent else None)
 
         # We MUST create the task directory here because it could be a resumed task.
         self.cwd.mkdir(exist_ok=True, parents=True)
         os.chdir(self.cwd)
         self._saved = False
 
-        step = Step(self, StepData(
+        step_data =StepData(
             initial_instruction=user_message,
             instruction=instruction, 
             title=title
-        ))
-        self.steps.append(step)
+        )
+        step = self.new_step(step_data)
         self.emit('step_started', instruction=instruction, step=len(self.steps) + 1, title=title)
         response = step.run()
         self.emit('step_completed', summary=step.get_summary(), response=response)
@@ -381,6 +427,13 @@ class Task(Stoppable):
 
         self._auto_save()
         self.log.info('Step done', rounds=len(step.data.rounds))
+        return response
+
+    def run_subtask(self, instruction: str, title: str | None = None):
+        """运行子任务"""
+        subtask = Task(self.manager, parent=self)
+        response = subtask.run(instruction, title)
+        self.context_manager.add_chat(UserMessage(content=instruction), response.message)
         return response
 
     def sync_to_cloud(self):

@@ -43,22 +43,25 @@ def confirm_disclaimer(console):
         else:
             console.print("[yellow]请输入 yes 或 no。[/yellow]")
 
-def get_safe_filename(input_str, extension=".html", max_length=16):
+def safe_rename(path: Path, input_str: str, max_length=16) -> Path:
     input_str = input_str.strip()
     safe_str = re.sub(r'[\\/:*?"<>|\s]', '', input_str).strip()
     if not safe_str:
-        return None
+        safe_str = "Task"
 
     name = safe_str[:max_length]
-    base_name = name
-    filename = f"{base_name}{extension}" if extension else base_name
+    new_path = path.parent / f"{name}{path.suffix}"
     counter = 1
 
-    while os.path.exists(filename):
-        filename = f"{base_name}_{counter}{extension}" if extension else f"{base_name}_{counter}"
-        counter += 1
+    while True:
+        try:
+            path.rename(new_path)
+            break
+        except:
+            new_path = path.parent / f"{name}_{counter}{path.suffix}"
+            counter += 1
 
-    return filename
+    return new_path
 
 def validate_file(path: Union[str, Path]) -> None:
     """验证文件格式和存在性"""

@@ -58,33 +58,15 @@ class DisplayClassic(RichDisplayPlugin):
         """任务开始事件处理"""
         instruction = event.typed_event.instruction
         title = event.typed_event.title
+        task_id = event.typed_event.task_id
+        parent_id = event.typed_event.parent_id
         if not title:
             title = instruction
-        tree = Tree(f"🚀 {T('Task processing started')}")
+        tree = Tree(f"🚀 {T('Task processing started' if not parent_id else 'SubTask processing started')}")
         tree.add(title)
-        self.console.print(tree)
-
-    def on_subtask_started(self, event):
-        """子任务开始事件处理"""
-        subtask_id = event.typed_event.subtask_id
-        instruction = event.typed_event.instruction
-        title = event.typed_event.title or instruction
-
-        tree = Tree(f"🔄 {T('SubTask started')}: {subtask_id[:8]}")
-        tree.add(title)
-        self.console.print(tree)
-
-    def on_subtask_completed(self, event):
-        """子任务完成事件处理"""
-        subtask_id = event.typed_event.subtask_id
-        execution_time = event.typed_event.execution_time
-        steps_count = event.typed_event.steps_count
-
-        icon = "✅"
-
-        tree = Tree(f"{icon} {T('SubTask completed')}: {subtask_id[:8]}")
-        tree.add(f"{T('Execution time')}: {execution_time:.1f}s")
-        tree.add(f"{T('Steps')}: {steps_count}")
+        tree.add(f"{T('Task ID')}: {task_id}")
+        if parent_id:
+            tree.add(f"{T('Parent ID')}: {parent_id}")
         self.console.print(tree)
 
     def on_request_started(self, event):
@@ -395,10 +377,15 @@ class DisplayClassic(RichDisplayPlugin):
     def on_task_completed(self, event):
         """任务结束事件处理"""
         path = event.typed_event.path
-        title = self._get_title(T("Task completed"))
+        task_id = event.typed_event.task_id
+        parent_id = event.typed_event.parent_id
+        title = self._get_title(T("Task completed" if not parent_id else "SubTask completed"), style="success")
         tree = Tree(title)
         if path:
             tree.add(f"{T('Path')}: {path}")
+        tree.add(f"{T('Task ID')}: {task_id}")
+        if parent_id:
+            tree.add(f"{T('Parent ID')}: {parent_id}")
         self.console.print(tree)
 
     def on_runtime_message(self, event):

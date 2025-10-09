@@ -152,7 +152,10 @@ class InteractiveConsole():
 
     def run_task(self, task, instruction, title=None):
         try:
-            task.run(instruction, title=title)
+            if instruction[0] == '|':
+                task.run_subtask(instruction[1:].rstrip(), title=title)
+            else:
+                task.run(instruction, title=title)
         except (EOFError, KeyboardInterrupt):
             pass
         except Exception as e:

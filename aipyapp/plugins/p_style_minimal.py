@@ -65,31 +65,6 @@ class DisplayMinimal(RichDisplayPlugin):
         tree.add(title)
         self.console.print(tree)
 
-    def on_subtask_started(self, event):
-        """子任务开始事件处理"""
-        subtask_id = event.typed_event.subtask_id
-        instruction = event.typed_event.instruction
-        title = event.typed_event.title or instruction
-
-        title_text = self._get_title(T("SubTask started: {}"), subtask_id[:8])
-        tree = Tree(title_text)
-        tree.add(title)
-        self.console.print(tree)
-
-    def on_subtask_completed(self, event):
-        """子任务完成事件处理"""
-        subtask_id = event.typed_event.subtask_id
-        execution_time = event.typed_event.execution_time
-        steps_count = event.typed_event.steps_count
-
-        icon = "✅"
-        style = "success"
-
-        title_text = self._get_title(f"{icon} {T('SubTask')} {subtask_id[:8]}", style=style)
-        tree = Tree(title_text)
-        tree.add(f"{execution_time:.1f}s | {steps_count} steps")
-        self.console.print(tree)
-
     def on_task_completed(self, event):
         """任务结束事件处理"""
         path = event.typed_event.path or ''

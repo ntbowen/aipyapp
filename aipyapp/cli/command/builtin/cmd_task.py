@@ -57,17 +57,16 @@ class TaskCommand(ParserCommand):
         event_bus = TypedEventBus()
         event_bus.add_listener(display)
         
-        for step in task.steps:
-            prev_event = None
-            for i, event in enumerate(step.events):
-                # 计算等待时间
-                if i > 0:
-                    wait_time = (event.timestamp - prev_event.timestamp) 
-                    if wait_time > 0:
-                        time.sleep(wait_time)
-                
-                event_bus.emit_event(event)
-                prev_event = event
+        prev_event = None
+        for i, event in enumerate(task.events):
+            # 计算等待时间
+            if i > 0:
+                wait_time = (event.timestamp - prev_event.timestamp) 
+                if wait_time > 0:
+                    time.sleep(wait_time)
+            
+            event_bus.emit_event(event)
+            prev_event = event
 
     def cmd(self, args, ctx):
         self.cmd_list(args, ctx)

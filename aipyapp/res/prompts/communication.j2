@@ -21,14 +21,26 @@ Notes:
 </code_block_markup>
 
 <tool_call_commands>
-To execute code blocks, modify them, or create subtasks, use the unified ToolCall format:
-  <!-- ToolCall: {"name": "Exec", "arguments": {"name": "block_name_to_execute"}} -->
-  <!-- ToolCall: {"name": "Edit", "arguments": {"name": "block_name", "old": "code_to_replace", "new": "replacement_code", "replace_all": false}} -->
-  <!-- ToolCall: {"name": "SubTask", "arguments": {"instruction": "task_instruction", "title": "optional_title", "inherit_context": false}} -->
+Tools are predefined commands you can call them to perform specific actions.
+Every tool call must be wrapped in a HTML comment as shown below:
+
+  <!-- ToolCall: {"id": "toocall_1", "name": "Exec", "arguments": {"name": "block_name_to_execute"}} -->
+  <!-- ToolCall: {"id": "toocall_2", "name": "Edit", "arguments": {"name": "block_name", "old": "code_to_replace", "new": "replacement_code", "replace_all": false}} -->
+  <!-- ToolCall: {"id": "toocall_3", "name": "SubTask", "arguments": {"instruction": "task_instruction", "title": "optional_title"}} -->
+
+- `name` is the tool name, one of: `Exec`, `Edit`, `SubTask`.
+- `id` is a unique identifier for this ToolCall within the current message.
+- `arguments` is a JSON object containing the parameters for the tool.
 
 Rules:
-- Multiple ToolCall commands can be used in a single message.
-- Refers to a previously defined code block in current or earlier messages.
+- Multiple ToolCall commands can be used in a single message and will be processed in order. 
+- Use `id` field to identify a ToolCall command and its result.
+
+Available tools and their parameters:
+
+<exec_tool>
+Execute a code block
+- `name`: Code block name to execute (string, required)
 
 Only these code block types (languages) can be executed:
 - `python` (always executable)
@@ -39,23 +51,16 @@ Platform restrictions:
 - `powershell`: Windows only
 - `applescript`: macOS only
 
-Available tools and their parameters:
+</exec_tool>
 
-**Exec Tool**: Execute a code block
-- `name`: Code block name to execute (string, required)
-
-**Edit Tool**: Modify existing code blocks incrementally
+<edit_tool>
+Modify existing code blocks incrementally
 - `name`: Code block name to edit (string, required)
 - `old`: Exact string to find and replace (string, required, must match exactly including whitespace)
 - `new`: Replacement string (string, required, can be empty for deletion)
 - `replace_all`: Replace all occurrences (boolean, optional, default: false)
   - `false`: Replace only the first occurrence (safer, prevents accidental multiple replacements)
   - `true`: Replace all occurrences (use when you want to replace multiple instances)
-
-**SubTask Tool**: Create and execute an independent subtask with isolated context
-- `instruction`: The instruction/task for the subtask to execute (string, required)
-- `title`: Optional descriptive title for the subtask (string, optional)
-- `inherit_context`: Whether to inherit parent task context summary (boolean, optional, default: false)
 
 Benefits of editing vs. rewriting full blocks:
 - More efficient (smaller messages, less tokens)
@@ -66,11 +71,14 @@ Error handling:
 - If `old` string is not found: Edit fails with error message
 - If `old` string appears multiple times and `replace_all` is false: Edit fails with error message
 - Always provide sufficient context in `old` string to ensure unique matching
+</edit_tool>
 
-Notes:
-- Multiple ToolCall commands can be used in a single message and will be processed in order.
-- Edit operations create new versions of code blocks; execution always uses the latest version.
+<subtask_tool>
+**SubTask Tool**: Create and execute an independent subtask with in an isolated context
+- `instruction`: The instruction/task for the subtask to execute (string, required)
+- `title`: Optional descriptive title for the subtask (string, optional)
 
+</subtask_tool>
 </tool_call_commands>
 
 <good_example>
@@ -83,20 +91,20 @@ print(resp.text)
 ```
 <!-- Block-End: {"name": "fetch_data"} -->
 
-<!-- ToolCall: {"name": "Exec", "arguments": {"name": "fetch_data"}} -->
+<!-- ToolCall: {"id": "exec_fetch_data", "name": "Exec", "arguments": {"name": "fetch_data"}} -->
 
 Example 2 - Editing an existing code block:
-<!-- ToolCall: {"name": "Edit", "arguments": {"name": "fetch_data", "old": "https://example.com", "new": "https://httpbin.org/json"}} -->
+<!-- ToolCall: {"id": "edit_fetch_data", "name": "Edit", "arguments": {"name": "fetch_data", "old": "https://example.com", "new": "https://httpbin.org/json"}} -->
 
 Example 3 - Multiple operations in sequence:
-<!-- ToolCall: {"name": "Edit", "arguments": {"name": "fetch_data", "old": "print(resp.text)", "new": "print(resp.json())"}} -->
-<!-- ToolCall: {"name": "Exec", "arguments": {"name": "fetch_data"}} -->
+<!-- ToolCall: {"id": "edit_fetch_data", "name": "Edit", "arguments": {"name": "fetch_data", "old": "print(resp.text)", "new": "print(resp.json())"}} -->
+<!-- ToolCall: {"id": "exec_fetch_data", "name": "Exec", "arguments": {"name": "fetch_data"}} -->
 
 Example 4 - Editing with replace_all:
-<!-- ToolCall: {"name": "Edit", "arguments": {"name": "fetch_data", "old": "resp", "new": "response", "replace_all": true}} -->
+<!-- ToolCall: {"id": "edit_fetch_data", "name": "Edit", "arguments": {"name": "fetch_data", "old": "resp", "new": "response", "replace_all": true}} -->
 
 Example 5 - Creating a subtask:
-<!-- ToolCall: {"name": "SubTask", "arguments": {"instruction": "Calculate the factorial of 5 and explain the mathematical steps", "title": "Factorial Calculation"}} -->
+<!-- ToolCall: {"id": "sub_task_1", "name": "SubTask", "arguments": {"instruction": "Calculate the factorial of 5 and explain the mathematical steps", "title": "Factorial Calculation"}} -->
 </good_example>
 
 </output_format>
