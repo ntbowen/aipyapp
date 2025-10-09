@@ -6,7 +6,7 @@
 These are the results of the tool calls in the previous message, processed in order:
 
 {% for toolcall_result in results %}
-{% set tool_name = toolcall_result.tool_name.value %}
+{% set tool_name = toolcall_result.name.value %}
 {% set result = toolcall_result.result %}
 <tool_call_result tool_name="{{ tool_name }}">
 {{ result.to_json() }}
