@@ -54,12 +54,19 @@ def safe_rename(path: Path, input_str: str, max_length=16) -> Path:
     counter = 1
 
     while True:
-        try:
-            path.rename(new_path)
-            break
-        except:
-            new_path = path.parent / f"{name}_{counter}{path.suffix}"
-            counter += 1
+        if not new_path.exists():
+            try:
+                path.rename(new_path)
+                break
+            except FileExistsError:
+                pass
+            except OSError as e:
+                if e.errno in (os.errno.EEXIST, os.errno.ENOTEMPTY):
+                    pass
+                else:
+                    raise
+        new_path = path.parent / f"{name}_{counter}{path.suffix}"
+        counter += 1
 
     return new_path
 

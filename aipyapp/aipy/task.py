@@ -331,18 +331,19 @@ class Task(Stoppable):
             self.emit('exception', msg='save_task', exception=e)
 
     def done(self):
-        if not self.steps:
+        if not self.steps or not self.cwd.exists():
             self.log.warning('Task not started, skipping save')
             return
         
-        if self.cwd.exists():
-            if not self._saved:
-                self.log.warning('Task not saved, trying to save')
-                self._auto_save()
+        if not self._saved:
+            self.log.warning('Task not saved, trying to save')
+            self._auto_save()
+
+        try:
             newname = safe_rename(self.cwd, self.instruction)
-        else:
-            newname = None
-            self.log.warning('Task directory not found')
+        except Exception as e:
+            self.log.exception('Failed to rename task directory', path=str(self.cwd))
+            newname = self.cwd
 
         self.log.info('Task done', path=newname)
         self.emit('task_completed', path=newname, task_id=self.task_id, parent_id=self.parent.task_id if self.parent else None)
