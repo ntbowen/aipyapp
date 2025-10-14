@@ -62,7 +62,11 @@ class DisplayClassic(RichDisplayPlugin):
         parent_id = event.typed_event.parent_id
         if not title:
             title = instruction
-        tree = Tree(f"🚀 {T('Task processing started' if not parent_id else 'SubTask processing started')}")
+        
+        if not parent_id:
+            tree = Tree(f"🚀 {T('Task processing started')}")
+        else:
+            tree = Tree(f"\n🚀 {T('SubTask processing started')}")
         tree.add(title)
         tree.add(f"{T('Task ID')}: {task_id}")
         if parent_id:
@@ -310,7 +314,7 @@ class DisplayClassic(RichDisplayPlugin):
         """MCP 工具调用结果事件处理"""
         typed_event = event.typed_event
         result = typed_event.result
-        title = self._get_title(T("Tool call result {}"), result.tool_name.value)
+        title = self._get_title(T("Tool call result {}"), result.name.value)
         tree = Tree(title)
         json_result = result.result.model_dump_json(indent=2, exclude_none=True)
         tree.add(Syntax(json_result, "json", word_wrap=True))

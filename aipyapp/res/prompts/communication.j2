@@ -39,8 +39,10 @@ Rules:
 Available tools and their parameters:
 
 <exec_tool>
-Execute a code block
-- `name`: Code block name to execute (string, required)
+Execute a code block:
+- `name`: `Exec`
+- `arguments`:  
+  - `name`: Code block name to execute (string, required)
 
 Only these code block types (languages) can be executed:
 - `python` (always executable)
@@ -50,17 +52,18 @@ Platform restrictions:
 - `bash`: Linux or macOS only
 - `powershell`: Windows only
 - `applescript`: macOS only
-
 </exec_tool>
 
 <edit_tool>
 Modify existing code blocks incrementally
-- `name`: Code block name to edit (string, required)
-- `old`: Exact string to find and replace (string, required, must match exactly including whitespace)
-- `new`: Replacement string (string, required, can be empty for deletion)
-- `replace_all`: Replace all occurrences (boolean, optional, default: false)
-  - `false`: Replace only the first occurrence (safer, prevents accidental multiple replacements)
-  - `true`: Replace all occurrences (use when you want to replace multiple instances)
+- `name`: `Edit`
+- `arguments`:
+  - `name`: Code block name to edit (string, required)
+  - `old`: Exact string to find and replace (string, required, must match exactly including whitespace)
+  - `new`: Replacement string (string, required, can be empty for deletion)
+  - `replace_all`: Replace all occurrences (boolean, optional, default: false)
+    - `false`: Replace only the first occurrence (safer, prevents accidental multiple replacements)
+    - `true`: Replace all occurrences (use when you want to replace multiple instances)
 
 Benefits of editing vs. rewriting full blocks:
 - More efficient (smaller messages, less tokens)
@@ -74,10 +77,18 @@ Error handling:
 </edit_tool>
 
 <subtask_tool>
-**SubTask Tool**: Create and execute an independent subtask with in an isolated context
-- `instruction`: The instruction/task for the subtask to execute (string, required)
-- `title`: Optional descriptive title for the subtask (string, optional)
+**SubTask Tool: Decomposing Complex Problems**:
+- `name`: `SubTask`
+- `arguments`:
+  - `instruction`: The instruction/task for the subtask to execute (string, required)
+  - `title`: Optional descriptive title for the subtask (string, optional)
 
+A SubTask is a powerful tool to delegate complex, self-contained parts of your main task. Think of it as spawning a new, independent agent to work on a specific problem. The result of their work will be returned to you as a summary, which you **must** use to inform your next steps.
+
+**When should you use a SubTask?**
+- **For complex research or analysis:** When you need to investigate a topic, compare alternatives, or analyze a piece of code without cluttering your current thought process.
+- **For isolated code generation and verification:** When you need to write and test a non-trivial piece of code. A subtask can focus on getting the code right and even testing it, returning only the final, verified code.
+- **To explore a solution without commitment:** If you are unsure about a plan, you can use a subtask to explore it. If it fails, it won't affect your main task's progress.
 </subtask_tool>
 </tool_call_commands>
 
@@ -90,21 +101,24 @@ resp = requests.get("https://example.com")
 print(resp.text)
 ```
 <!-- Block-End: {"name": "fetch_data"} -->
-
 <!-- ToolCall: {"id": "exec_fetch_data", "name": "Exec", "arguments": {"name": "fetch_data"}} -->
 
 Example 2 - Editing an existing code block:
 <!-- ToolCall: {"id": "edit_fetch_data", "name": "Edit", "arguments": {"name": "fetch_data", "old": "https://example.com", "new": "https://httpbin.org/json"}} -->
 
-Example 3 - Multiple operations in sequence:
-<!-- ToolCall: {"id": "edit_fetch_data", "name": "Edit", "arguments": {"name": "fetch_data", "old": "print(resp.text)", "new": "print(resp.json())"}} -->
-<!-- ToolCall: {"id": "exec_fetch_data", "name": "Exec", "arguments": {"name": "fetch_data"}} -->
+Example 3 - Strategic Example: Using a SubTask for Safe Refactoring
+**Main Task:** "Refactor the `database.py` module to improve performance."
 
-Example 4 - Editing with replace_all:
-<!-- ToolCall: {"id": "edit_fetch_data", "name": "Edit", "arguments": {"name": "fetch_data", "old": "resp", "new": "response", "replace_all": true}} -->
+**Your Thought Process (as the LLM):** "Refactoring is risky. Before I write any code, I need to understand the module's current state. This is a perfect analysis task for a subtask."
 
-Example 5 - Creating a subtask:
-<!-- ToolCall: {"id": "sub_task_1", "name": "SubTask", "arguments": {"instruction": "Calculate the factorial of 5 and explain the mathematical steps", "title": "Factorial Calculation"}} -->
+**Your Action:**
+<!-- ToolCall: {"id": "sub_analyze_db", "name": "SubTask", "arguments": {"instruction": "Analyze the file 'database.py'. Identify all public functions, their call signatures, and any other modules that import and use them. Return a summary of the module's public API and its dependents.", "title": "Analyze database.py Dependencies"}} -->
+
+**Why this is a good use of SubTask:**
+1.  **Isolation:** The analysis is done in a clean environment.
+2.  **Focus:** The subtask has a single, clear goal.
+3.  **Safety:** It's a read-only operation, reducing the risk of making premature changes.
+4.  **Clarity:** The main task is kept clean. You wait for the analysis result before proceeding with the actual refactoring plan.
 </good_example>
 
 </output_format>

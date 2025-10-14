@@ -68,11 +68,7 @@ class SubTaskArgs(BaseModel):
 
 class SubTaskResult(ToolResult):
     """SubTask tool result"""
-    subtask_id: str = Field(title="SubTask ID")
-    status: str = Field(title="SubTask status")  # 'completed', 'failed', 'timeout'
     result: Optional[str] = Field(default=None, title="SubTask result content")
-    execution_time: float = Field(title="Execution time in seconds")
-    steps_count: int = Field(title="Number of steps executed")
 
 class ToolCall(BaseModel):
     """Tool call"""
@@ -131,6 +127,7 @@ class ToolCallProcessor:
                     )
                     results.append(ToolCallResult(
                         name=name,
+                        id=tool_call.id,
                         result=ExecToolResult(
                             block_name=block_name,
                             error=error
@@ -249,44 +246,18 @@ class ToolCallProcessor:
 
     def _call_subtask(self, task: 'Task', tool_call: ToolCall) -> SubTaskResult:
         """执行 SubTask 工具"""
-        from .subtask import SubTaskManager
-
         args = tool_call.arguments
 
         try:
-            # 确保任务有SubTaskManager
-            if not hasattr(task, 'subtask_manager') or task.subtask_manager is None:
-                task.subtask_manager = SubTaskManager(task)
-
             # 创建子任务
-            subtask = task.subtask_manager.create_subtask(
-                instruction=args.instruction,
-                title=args.title,
-                inherit_context=args.inherit_context
-            )
-
-            # 运行子任务
-            result_dict = task.subtask_manager.run_subtask(
-                subtask=subtask,
-                instruction=args.instruction,
-                title=args.title
-            )
-
+            response = task.run_subtask(args.instruction, args.title)
             return SubTaskResult(
-                subtask_id=result_dict["subtask_id"],
-                status=result_dict["status"],
-                result=result_dict["result"],
-                execution_time=result_dict["execution_time"],
-                steps_count=result_dict["steps_count"]
+                result=response.message.content
             )
 
         except Exception as e:
             self.log.exception("SubTask execution failed")
             return SubTaskResult(
-                subtask_id="unknown",
-                status="failed",
                 result=f"SubTask execution failed: {str(e)}",
-                execution_time=0.0,
-                steps_count=0,
                 error=Error.new("SubTask execution failed", exception=str(e))
             )

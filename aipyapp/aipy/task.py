@@ -12,6 +12,7 @@ from typing import List, Union, TYPE_CHECKING
 from pathlib import Path
 from importlib.resources import read_text
 
+from matplotlib.pyplot import step
 import requests
 from pydantic import BaseModel, Field, ValidationError, field_serializer, field_validator
 from loguru import logger
@@ -29,6 +30,7 @@ from .chat import MessageStorage, ChatMessage
 from .step import Step, StepData
 from .blocks import CodeBlocks
 from .client import Client
+from .response import Response
 
 if TYPE_CHECKING:
     from .taskmgr import TaskManager
@@ -123,8 +125,9 @@ class Task(Stoppable):
         
         # Phase 2: Initialize data objects (minimal dependencies)
         if parent:
-            data.context = parent.context.model_copy(deep=True)
-            data.message_storage = parent.message_storage.model_copy(deep=True)
+            pass
+            #data.context = parent.context.model_copy(deep=True)
+            #data.message_storage = parent.message_storage.model_copy(deep=True)
             #data.blocks = parent.blocks.model_copy(deep=True)
 
         self.blocks = data.blocks
@@ -346,7 +349,7 @@ class Task(Stoppable):
             newname = self.cwd
 
         self.log.info('Task done', path=newname)
-        self.emit('task_completed', path=newname, task_id=self.task_id, parent_id=self.parent.task_id if self.parent else None)
+        self.emit('task_completed', path=str(newname), task_id=self.task_id, parent_id=self.parent.task_id if self.parent else None)
         #self.context.diagnose.report_code_error(self.runner.history)
         if self.settings.get('share_result'):
             self.sync_to_cloud()
@@ -371,7 +374,26 @@ class Task(Stoppable):
 
         return self.message_storage.store(message)
 
-    def run(self, instruction: str, title: str | None = None):
+    def _auto_compact(self):
+       # Step级别的上下文清理
+        auto_compact_enabled = self.settings.get('auto_compact_enabled', True)
+        if not auto_compact_enabled:
+            return
+        
+        self.log.info("Starting step compact...")
+        result = self.step_cleaner.compact_step(self.steps[-1])
+        self.log.info(f"Step compact result: {result}")
+        cleaned_count, remaining_messages, tokens_saved, tokens_remaining = result
+        self.log.info(f"Step compact completed, cleaned_count: {cleaned_count}")
+        
+        self.emit('step_cleanup_completed', 
+                    cleaned_messages=cleaned_count,
+                    remaining_messages=remaining_messages,
+                    tokens_saved=tokens_saved,
+                    tokens_remaining=tokens_remaining)
+        self.log.info(f"Step compact completed: {cleaned_count} messages cleaned")
+
+    def run(self, instruction: str, title: str | None = None) -> Response:
         """
         执行自动处理循环，直到 LLM 不再返回代码消息
         instruction: 用户输入的字符串（可包含@file等多模态标记）
@@ -381,6 +403,8 @@ class Task(Stoppable):
         if first_run:
             self.context_manager.add_message(self.get_system_message())
             self.emit('task_started', instruction=instruction, title=title, task_id=self.task_id, parent_id=self.parent.task_id if self.parent else None)
+        else:
+            self._auto_compact()
 
         # We MUST create the task directory here because it could be a resumed task.
         self.cwd.mkdir(exist_ok=True, parents=True)
@@ -397,44 +421,17 @@ class Task(Stoppable):
         response = step.run()
         self.emit('step_completed', summary=step.get_summary(), response=response)
 
-        # Step级别的上下文清理
-        auto_compact_enabled = self.settings.get('auto_compact_enabled', True)
-        self.log.info(f"Auto compact enabled: {auto_compact_enabled}")
-        if auto_compact_enabled:
-            try:
-                self.log.info("Starting step compact...")
-                result = self.step_cleaner.compact_step(step)
-                self.log.info(f"Step compact result: {result}")
-                cleaned_count, remaining_messages, tokens_saved, tokens_remaining = result
-                self.log.info(f"Step compact completed, cleaned_count: {cleaned_count}")
-                
-                if cleaned_count > 0:
-                    self.emit('step_cleanup_completed', 
-                             cleaned_messages=cleaned_count,
-                             remaining_messages=remaining_messages,
-                             tokens_saved=tokens_saved,
-                             tokens_remaining=tokens_remaining)
-                    self.log.info(f"Step compact completed: {cleaned_count} messages cleaned")
-                else:
-                    # 即使没有清理，也发送事件显示当前状态
-                    self.emit('step_cleanup_completed',
-                             cleaned_messages=0,
-                             remaining_messages=remaining_messages,
-                             tokens_saved=0,
-                             tokens_remaining=tokens_remaining)
-                    self.log.info("No messages were cleaned")
-            except Exception as e:
-                self.log.warning(f"Step compact failed: {e}")
-
         self._auto_save()
         self.log.info('Step done', rounds=len(step.data.rounds))
         return response
 
-    def run_subtask(self, instruction: str, title: str | None = None):
+    def run_subtask(self, instruction: str, title: str | None = None, cli=False) -> Response:
         """运行子任务"""
         subtask = Task(self.manager, parent=self)
         response = subtask.run(instruction, title)
-        self.context_manager.add_chat(UserMessage(content=instruction), response.message)
+        subtask.done()
+        if cli:
+            self.context_manager.add_chat(UserMessage(content=instruction), response.message)
         return response
 
     def sync_to_cloud(self):
