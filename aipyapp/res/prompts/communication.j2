@@ -89,6 +89,12 @@ A SubTask is a powerful tool to delegate complex, self-contained parts of your m
 - **For complex research or analysis:** When you need to investigate a topic, compare alternatives, or analyze a piece of code without cluttering your current thought process.
 - **For isolated code generation and verification:** When you need to write and test a non-trivial piece of code. A subtask can focus on getting the code right and even testing it, returning only the final, verified code.
 - **To explore a solution without commitment:** If you are unsure about a plan, you can use a subtask to explore it. If it fails, it won't affect your main task's progress.
+
+**Sharing data between parent and subtask using session:**
+- Parent and subtask share the same persistent session, enabling bidirectional data exchange.
+- **Parent → Subtask:** Use `set_persistent_state(key=value)` before calling SubTask. The subtask can retrieve it with `get_persistent_state('key')`.
+- **Subtask → Parent:** The subtask can use `set_persistent_state(result=value)` to pass data back. After the subtask completes, the parent can access it with `get_persistent_state('result')`.
+- **Use cases:** Passing configuration, API keys, intermediate results, or any data that needs to persist across task boundaries.
 </subtask_tool>
 </tool_call_commands>
 
@@ -119,6 +125,36 @@ Example 3 - Strategic Example: Using a SubTask for Safe Refactoring
 2.  **Focus:** The subtask has a single, clear goal.
 3.  **Safety:** It's a read-only operation, reducing the risk of making premature changes.
 4.  **Clarity:** The main task is kept clean. You wait for the analysis result before proceeding with the actual refactoring plan.
+
+Example 4 - Using Session to Share Data Between Parent and SubTask:
+**Main Task:** "Fetch user data from API, then process it with a subtask."
+
+**Step 1 - Parent Task: Store data in session**
+<!-- Block-Start: {"name": "fetch_user", "path": "fetch.py"} -->
+```python
+import requests
+response = requests.get("https://api.example.com/user/123")
+user_data = response.json()
+
+# Store data in session for subtask to access
+runtime.set_persistent_state(user_id=user_data['id'], user_name=user_data['name'])
+```
+<!-- Block-End: {"name": "fetch_user"} -->
+<!-- ToolCall: {"id": "exec_fetch", "name": "Exec", "arguments": {"name": "fetch_user"}} -->
+
+**Step 2 - Call SubTask**
+<!-- ToolCall: {"id": "sub_process", "name": "SubTask", "arguments": {"instruction": "Read user_id and user_name from session, validate the data, and store the validation result back to session as 'is_valid'", "title": "Validate User Data"}} -->
+
+**Step 3 - Parent Task: Read result from session**
+<!-- Block-Start: {"name": "check_result", "path": "check.py"} -->
+```python
+from aipyapp import utils
+# Retrieve the validation result from subtask
+is_valid = utils.get_persistent_state('is_valid')
+print(f"User validation result: {is_valid}")
+```
+<!-- Block-End: {"name": "check_result"} -->
+<!-- ToolCall: {"id": "exec_check", "name": "Exec", "arguments": {"name": "check_result"}} -->
 </good_example>
 
 </output_format>

@@ -67,6 +67,7 @@ class TaskData(BaseModel):
     context: ContextData = Field(default_factory=ContextData)
     message_storage: MessageStorage = Field(default_factory=MessageStorage)
     events: List[BaseEvent.get_subclasses_union()] = Field(default_factory=list)
+    session: dict = Field(default_factory=dict)
 
     @field_serializer('events')
     def serialize_events(self, events: List, _info):
@@ -134,6 +135,12 @@ class Task(Stoppable):
         self.message_storage = data.message_storage
         self.context = data.context
         self.events = data.events
+
+        # session: 子任务共享父任务的 session 引用，根任务使用 TaskData 中的 session
+        if parent:
+            self.session = parent.session
+        else:
+            self.session = data.session
         
         # Phase 3: Initialize managers and processors (depend on Phase 2)
         self.event_bus = TypedEventBus() if not parent else parent.event_bus

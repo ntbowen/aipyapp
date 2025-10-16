@@ -26,10 +26,9 @@ def restore_output(func):
 
 class CliPythonRuntime(PythonRuntime):
     def __init__(self, task):
-        super().__init__()
+        super().__init__(envs=task.role.envs, session=task.session)
         self.task = task
         self.gui = task.gui
-        self.envs = task.role.envs
         self.display = task.display
         self._auto_install = task.settings.get('auto_install')
         self._auto_getenv = task.settings.get('auto_getenv')
