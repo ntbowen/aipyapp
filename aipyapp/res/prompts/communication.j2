@@ -90,11 +90,23 @@ A SubTask is a powerful tool to delegate complex, self-contained parts of your m
 - **For isolated code generation and verification:** When you need to write and test a non-trivial piece of code. A subtask can focus on getting the code right and even testing it, returning only the final, verified code.
 - **To explore a solution without commitment:** If you are unsure about a plan, you can use a subtask to explore it. If it fails, it won't affect your main task's progress.
 
-**Sharing data between parent and subtask using session:**
-- Parent and subtask share the same persistent session, enabling bidirectional data exchange.
-- **Parent → Subtask:** Use `set_persistent_state(key=value)` before calling SubTask. The subtask can retrieve it with `get_persistent_state('key')`.
-- **Subtask → Parent:** The subtask can use `set_persistent_state(result=value)` to pass data back. After the subtask completes, the parent can access it with `get_persistent_state('result')`.
-- **Use cases:** Passing configuration, API keys, intermediate results, or any data that needs to persist across task boundaries.
+**Sharing data between parent and subtask:**
+
+There are two methods for parent-subtask communication:
+
+1. **Session (for lightweight data):**
+   - Parent and subtask share the same persistent session, enabling bidirectional data exchange.
+   - **Parent → Subtask:** Use `set_persistent_state(key=value)` before calling SubTask. The subtask can retrieve it with `get_persistent_state('key')`.
+   - **Subtask → Parent:** The subtask can use `set_persistent_state(result=value)` to pass data back. After the subtask completes, the parent can access it with `get_persistent_state('result')`.
+   - **Use cases:** Passing configuration, API keys, flags, or small data that needs to persist across task boundaries.
+
+2. **Shared files (for large data or artifacts):**
+   - Use `save_shared_data(filename, data)` and `load_shared_data(filename)` for file-based communication.
+   - Files are saved to/loaded from the `shared/` directory, which is automatically accessible to both parent and subtask.
+   - **Parent → Subtask:** Save data with `save_shared_data("config.json", data)`. Subtask loads with `load_shared_data("config.json")`.
+   - **Subtask → Parent:** Subtask saves with `save_shared_data("result.json", result)`. Parent loads from `{subtask_dir}/shared/result.json` or via the subtask's code.
+   - **Supported formats:** JSON (.json), Pickle (.pkl, .pickle), Text (.txt) - automatically detected by extension.
+   - **Use cases:** Large datasets, trained models, reports, or any data that benefits from persistence and reusability.
 </subtask_tool>
 </tool_call_commands>
 
@@ -155,6 +167,59 @@ print(f"User validation result: {is_valid}")
 ```
 <!-- Block-End: {"name": "check_result"} -->
 <!-- ToolCall: {"id": "exec_check", "name": "Exec", "arguments": {"name": "check_result"}} -->
+
+Example 5 - Using Shared Files for Large Data Exchange:
+**Main Task:** "Scrape a large dataset, then analyze it with a subtask."
+
+**Step 1 - Parent Task: Scrape data and save to shared file**
+<!-- Block-Start: {"name": "scrape_data", "path": "scrape.py"} -->
+```python
+import requests
+import pandas as pd
+
+# Scrape data from multiple pages
+all_data = []
+for page in range(1, 11):
+    response = requests.get(f"https://api.example.com/data?page={page}")
+    all_data.extend(response.json()['items'])
+
+df = pd.DataFrame(all_data)
+
+# Save large dataset to shared file
+runtime.save_shared_data("dataset.pkl", df)
+print(f"Saved {len(df)} records to shared/dataset.pkl")
+```
+<!-- Block-End: {"name": "scrape_data"} -->
+<!-- ToolCall: {"id": "exec_scrape", "name": "Exec", "arguments": {"name": "scrape_data"}} -->
+
+**Step 2 - Call SubTask to analyze data**
+<!-- ToolCall: {"id": "sub_analyze", "name": "SubTask", "arguments": {"instruction": "Load dataset.pkl from shared directory, perform statistical analysis, and save the analysis report to analysis_report.json in the shared directory", "title": "Analyze Dataset"}} -->
+
+**Step 3 - Parent Task: Read analysis results**
+<!-- Block-Start: {"name": "read_analysis", "path": "read_results.py"} -->
+```python
+# Note: The subtask has its own directory under the parent task directory
+# We need to construct the path to the subtask's shared directory
+import os
+import json
+from pathlib import Path
+
+# Find the subtask directory (it will be named with a unique task ID)
+subtask_dirs = [d for d in Path.cwd().iterdir() if d.is_dir()]
+latest_subtask = max(subtask_dirs, key=lambda d: d.stat().st_mtime)
+
+# Load the analysis report from subtask's shared directory
+report_path = latest_subtask / "shared" / "analysis_report.json"
+with open(report_path) as f:
+    report = json.load(f)
+
+print("Analysis Report:")
+print(f"Total records: {report['total_records']}")
+print(f"Mean value: {report['mean_value']}")
+print(f"Summary: {report['summary']}")
+```
+<!-- Block-End: {"name": "read_analysis"} -->
+<!-- ToolCall: {"id": "exec_read", "name": "Exec", "arguments": {"name": "read_analysis"}} -->
 </good_example>
 
 </output_format>

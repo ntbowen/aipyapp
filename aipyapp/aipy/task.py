@@ -8,11 +8,10 @@ import json
 import uuid
 import zlib
 import base64
-from typing import List, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Union, TYPE_CHECKING
 from pathlib import Path
 from importlib.resources import read_text
 
-from matplotlib.pyplot import step
 import requests
 from pydantic import BaseModel, Field, ValidationError, field_serializer, field_validator
 from loguru import logger
@@ -67,7 +66,7 @@ class TaskData(BaseModel):
     context: ContextData = Field(default_factory=ContextData)
     message_storage: MessageStorage = Field(default_factory=MessageStorage)
     events: List[BaseEvent.get_subclasses_union()] = Field(default_factory=list)
-    session: dict = Field(default_factory=dict)
+    session: Dict[str, Any] = Field(default_factory=dict)
 
     @field_serializer('events')
     def serialize_events(self, events: List, _info):
@@ -254,7 +253,7 @@ class Task(Stoppable):
         
         try:
             # 先清理上下文中的相关消息
-            cleaned_count, remaining_messages, tokens_saved, tokens_remaining = self.step_cleaner.delete_step(step_to_delete)
+            cleaned_count, remaining_messages, tokens_saved, tokens_remaining = self.step_cleaner.delete_step(step_to_delete)  # noqa: E501
             
             # 然后从步骤列表中删除
             self.steps.pop(index)
@@ -291,7 +290,7 @@ class Task(Stoppable):
                 data = json.loads(f.read())
                 try:
                     model_context = {'message_storage': MessageStorage.model_validate(data['message_storage'])}
-                except:
+                except Exception:
                     model_context = None
 
                 task_data = TaskData.model_validate(data, context=model_context)
@@ -351,7 +350,7 @@ class Task(Stoppable):
 
         try:
             newname = safe_rename(self.cwd, self.instruction)
-        except Exception as e:
+        except Exception:
             self.log.exception('Failed to rename task directory', path=str(self.cwd))
             newname = self.cwd
 
@@ -545,7 +544,7 @@ class SimpleStepCleaner:
         
         self.log.info(f"Maximum cleanup completed: {cleaned_count} messages cleaned")
         self.log.info(f"Execution records preserved: {len(rounds)} rounds kept")
-        self.log.info(f"Context preserved: initial_instruction + last round")
+        self.log.info("Context preserved: initial_instruction + last round")
         self.log.info(f"Messages: {messages_before} -> {messages_after}")
         self.log.info(f"Tokens: {tokens_before} -> {tokens_after} (saved: {tokens_saved})")
         

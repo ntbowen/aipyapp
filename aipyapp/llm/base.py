@@ -144,5 +144,7 @@ class BaseClient(ABC):
             msg = self._parse_response(response)
 
         msg.usage['time'] = int(time.time() - start)
+        if not msg.content:
+            self.log.warning("Got empty LLM response")
         return msg
     

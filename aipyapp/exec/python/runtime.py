@@ -1,8 +1,11 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 import sys
+import json
+import pickle
 import subprocess
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -111,7 +114,107 @@ class PythonRuntime(ABC):
         with open(path) as f:
             reqs = [line.strip() for line in f if line.strip() and not line.startswith("#")]
         return self.ensure_packages(*reqs, **kwargs)
-    
+
+    def save_shared_data(self, filename: str, data: Any) -> str:
+        """
+        Save data to the shared directory for parent-subtask communication
+
+        Args:
+            filename: Name of the file (e.g., "data.json", "config.pkl")
+            data: Data to save (will be automatically serialized)
+
+        Returns:
+            str: Absolute path to the saved file
+
+        Notes:
+            - JSON files (.json): Use JSON serialization
+            - Pickle files (.pkl, .pickle): Use pickle serialization
+            - Text files (.txt): Save as plain text (str required)
+            - Other extensions: Use pickle by default
+
+        Examples:
+            >>> path = utils.save_shared_data("config.json", {"api_key": "xxx"})
+            >>> path = utils.save_shared_data("model.pkl", trained_model)
+            >>> path = utils.save_shared_data("report.txt", "Analysis complete")
+        """
+        shared_dir = Path.cwd() / "shared"
+        shared_dir.mkdir(exist_ok=True)
+
+        filepath = shared_dir / filename
+        ext = filepath.suffix.lower()
+
+        if ext == ".json":
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        elif ext == ".txt":
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(str(data))
+        else:  # .pkl, .pickle, or default to pickle
+            with open(filepath, "wb") as f:
+                pickle.dump(data, f)
+
+        self.log.info(f"Saved shared data to: {filepath}")
+        return str(filepath.absolute())
+
+    def load_shared_data(self, filename: str, from_parent: bool = True) -> Any:
+        """
+        Load data from the shared directory
+
+        Args:
+            filename: Name of the file to load
+            from_parent: If True, try loading from parent's shared/ directory first
+
+        Returns:
+            Any: Deserialized data
+
+        Raises:
+            FileNotFoundError: If the file is not found
+
+        Notes:
+            - Automatically detects format based on file extension
+            - When from_parent=True, searches: ../shared/, then ./shared/
+            - When from_parent=False, only searches: ./shared/
+
+        Examples:
+            >>> config = utils.load_shared_data("config.json")
+            >>> model = utils.load_shared_data("model.pkl")
+            >>> result = utils.load_shared_data("result.json", from_parent=False)
+        """
+        search_paths = []
+
+        if from_parent:
+            # Try parent's shared directory first
+            search_paths.append(Path.cwd().parent / "shared" / filename)
+
+        # Then try current shared directory
+        search_paths.append(Path.cwd() / "shared" / filename)
+
+        filepath = None
+        for path in search_paths:
+            if path.exists():
+                filepath = path
+                break
+
+        if not filepath:
+            raise FileNotFoundError(
+                f"Shared file '{filename}' not found in: {[str(p.parent) for p in search_paths]}"
+            )
+
+        ext = filepath.suffix.lower()
+
+        if ext == ".json":
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        elif ext == ".txt":
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = f.read()
+        else:  # .pkl, .pickle, or default to pickle
+            with open(filepath, "rb") as f:
+                data = pickle.load(f)
+
+        self.log.info(f"Loaded shared data from: {filepath}")
+        return data
+
     @abstractmethod
     def install_packages(self, *packages: str):
         pass

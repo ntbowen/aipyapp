@@ -160,7 +160,7 @@ class CliPythonRuntime(PythonRuntime):
         functions = {}
         
         # 内置运行时函数
-        builtin_names = ['set_state', 'get_block_state', 'set_persistent_state', 'get_persistent_state', 'install_packages', 'get_env', 'show_image', 'get_block_by_name', 'call_function']
+        builtin_names = ['set_state', 'get_block_state', 'set_persistent_state', 'get_persistent_state', 'install_packages', 'get_env', 'show_image', 'get_block_by_name', 'call_function', 'save_shared_data', 'load_shared_data']
         for name in builtin_names:
             func_obj = getattr(self, name)
             docstring = func_obj.__doc__
