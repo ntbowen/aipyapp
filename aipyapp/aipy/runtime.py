@@ -49,9 +49,9 @@ class CliPythonRuntime(PythonRuntime):
             bool: True if the packages are installed successfully, False otherwise
 
         Examples:
-            >>> runtime.install_packages('requests', 'openai')
+            >>> utils.install_packages('requests', 'openai')
             True
-            >>> runtime.install_packages('requests', 'openai')
+            >>> utils.install_packages('requests', 'openai')
             False
         """
         message = f"LLM {T('Request to install third-party packages')}: {packages}"

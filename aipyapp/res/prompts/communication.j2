@@ -145,11 +145,12 @@ Example 4 - Using Session to Share Data Between Parent and SubTask:
 <!-- Block-Start: {"name": "fetch_user", "path": "fetch.py"} -->
 ```python
 import requests
+from aipyapp import utils
 response = requests.get("https://api.example.com/user/123")
 user_data = response.json()
 
 # Store data in session for subtask to access
-runtime.set_persistent_state(user_id=user_data['id'], user_name=user_data['name'])
+utils.set_persistent_state(user_id=user_data['id'], user_name=user_data['name'])
 ```
 <!-- Block-End: {"name": "fetch_user"} -->
 <!-- ToolCall: {"id": "exec_fetch", "name": "Exec", "arguments": {"name": "fetch_user"}} -->
@@ -177,6 +178,8 @@ Example 5 - Using Shared Files for Large Data Exchange:
 import requests
 import pandas as pd
 
+from aipyapp import utils
+
 # Scrape data from multiple pages
 all_data = []
 for page in range(1, 11):
@@ -186,7 +189,7 @@ for page in range(1, 11):
 df = pd.DataFrame(all_data)
 
 # Save large dataset to shared file
-runtime.save_shared_data("dataset.pkl", df)
+utils.save_shared_data("dataset.pkl", df)
 print(f"Saved {len(df)} records to shared/dataset.pkl")
 ```
 <!-- Block-End: {"name": "scrape_data"} -->
