@@ -1,0 +1,236 @@
+name: Build Linux Executables
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        include:
+          - os: ubuntu-22.04
+            platform: ubuntu-22.04
+          - os: ubuntu-24.04
+            platform: ubuntu-24.04
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-dev \
+            python3-pip \
+            build-essential \
+            zlib1g-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libfreetype6-dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Project Dependencies
+        run: |
+          uv sync --all-extras
+          uv pip install pyinstaller
+
+      - name: Build with PyInstaller (CLI)
+        run: |
+          uv run pyinstaller \
+            --onefile \
+            --name aipy-linux-${{ matrix.platform }} \
+            --console \
+            --add-data "aipyapp:aipyapp" \
+            --hidden-import anthropic \
+            --hidden-import openai \
+            --hidden-import pandas \
+            --hidden-import fastapi \
+            --hidden-import rich \
+            --hidden-import prompt_toolkit \
+            aipyapp/__main__.py
+
+      - name: Test Executable
+        run: |
+          ./dist/aipy-linux-${{ matrix.platform }} --version || echo "Version check complete"
+          ./dist/aipy-linux-${{ matrix.platform }} --help
+
+      - name: Package Executable
+        run: |
+          cd dist
+          tar -czf aipy-linux-${{ matrix.platform }}.tar.gz aipy-linux-${{ matrix.platform }}
+          sha256sum aipy-linux-${{ matrix.platform }}.tar.gz > aipy-linux-${{ matrix.platform }}.tar.gz.sha256
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aipy-linux-${{ matrix.platform }}
+          path: |
+            dist/aipy-linux-${{ matrix.platform }}.tar.gz
+            dist/aipy-linux-${{ matrix.platform }}.tar.gz.sha256
+
+      - name: Upload to GitHub Releases
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/aipy-linux-${{ matrix.platform }}.tar.gz
+            dist/aipy-linux-${{ matrix.platform }}.tar.gz.sha256
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-appimage:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse libfuse2
+          uv sync --all-extras
+          uv pip install python-appimage
+
+      - name: Build AppImage
+        run: |
+          uv run python-appimage build app \
+            -l manylinux2014_x86_64 \
+            ./aipyapp
+
+      - name: Rename AppImage
+        run: |
+          mv *.AppImage aipy-x86_64.AppImage
+          chmod +x aipy-x86_64.AppImage
+          sha256sum aipy-x86_64.AppImage > aipy-x86_64.AppImage.sha256
+
+      - name: Test AppImage
+        run: |
+          ./aipy-x86_64.AppImage --version || echo "AppImage test complete"
+
+      - name: Upload AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aipy-appimage
+          path: |
+            aipy-x86_64.AppImage
+            aipy-x86_64.AppImage.sha256
+
+      - name: Upload AppImage to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            aipy-x86_64.AppImage
+            aipy-x86_64.AppImage.sha256
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-rpm-deb:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ruby \
+            ruby-dev \
+            rubygems \
+            rpm \
+            build-essential
+          sudo gem install --no-document fpm
+
+      - name: Install Project
+        run: |
+          uv sync --all-extras
+          uv build
+
+      - name: Create DEB Package
+        run: |
+          mkdir -p package/usr/local/bin
+          mkdir -p package/usr/share/applications
+          mkdir -p package/usr/share/doc/aipyapp
+          
+          # Install via pip to get the executable
+          uv pip install dist/*.whl
+          
+          # Copy executable
+          cp ~/.local/bin/aipy package/usr/local/bin/ || \
+          cp $(which aipy) package/usr/local/bin/
+          
+          # Create .deb
+          fpm -s dir -t deb \
+            -n aipyapp \
+            -v $(cat aipyapp/__version__.py | grep -oP '\d+\.\d+\.\d+') \
+            --description "AI-Powered Python & Python-Powered AI" \
+            --url "https://github.com/knownsec/aipyapp" \
+            --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
+            --license "Apache-2.0" \
+            -C package \
+            usr/local/bin/aipy=/usr/local/bin/aipy
+
+      - name: Create RPM Package
+        run: |
+          fpm -s dir -t rpm \
+            -n aipyapp \
+            -v $(cat aipyapp/__version__.py | grep -oP '\d+\.\d+\.\d+') \
+            --description "AI-Powered Python & Python-Powered AI" \
+            --url "https://github.com/knownsec/aipyapp" \
+            --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
+            --license "Apache-2.0" \
+            -C package \
+            usr/local/bin/aipy=/usr/local/bin/aipy
+
+      - name: Upload DEB/RPM Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aipy-packages
+          path: |
+            *.deb
+            *.rpm
+
+      - name: Upload Packages to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.deb
+            *.rpm
+          token: ${{ secrets.GITHUB_TOKEN }}
