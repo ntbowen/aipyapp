@@ -59,7 +59,7 @@ jobs:
             gir1.2-webkit2-4.0
           
           uv sync --all-extras
-          uv pip install pyinstaller wxPython
+          uv pip install pyinstaller wxPython PyGObject
 
       - name: Build with PyInstaller (CLI)
         run: |
@@ -114,8 +114,11 @@ jobs:
             --hidden-import wx \
             --hidden-import wx.core \
             --hidden-import wx.lib \
+            --hidden-import gi \
+            --hidden-import gi.repository \
             --collect-all aipyapp \
             --collect-all wx \
+            --collect-all gi \
             run_aipy.py
 
       - name: Test Executable
@@ -190,7 +193,7 @@ jobs:
             gir1.2-webkit2-4.0
           
           uv sync --all-extras
-          uv pip install pyinstaller wxPython
+          uv pip install pyinstaller wxPython PyGObject
 
       - name: Build with PyInstaller
         run: |
@@ -246,8 +249,11 @@ jobs:
             --hidden-import wx \
             --hidden-import wx.core \
             --hidden-import wx.lib \
+            --hidden-import gi \
+            --hidden-import gi.repository \
             --collect-all aipyapp \
             --collect-all wx \
+            --collect-all gi \
             run_aipy.py
 
       - name: Download appimagetool
@@ -381,7 +387,7 @@ jobs:
             gir1.2-webkit2-4.0
           
           uv sync --all-extras
-          uv pip install pyinstaller wxPython
+          uv pip install pyinstaller wxPython PyGObject
           uv build
 
       - name: Build PyInstaller Executable for Packaging
@@ -438,8 +444,11 @@ jobs:
             --hidden-import wx \
             --hidden-import wx.core \
             --hidden-import wx.lib \
+            --hidden-import gi \
+            --hidden-import gi.repository \
             --collect-all aipyapp \
             --collect-all wx \
+            --collect-all gi \
             run_aipy.py
 
       - name: Create DEB Package
