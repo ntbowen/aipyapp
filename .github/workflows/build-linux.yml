@@ -55,12 +55,18 @@ jobs:
 
       - name: Build with PyInstaller (CLI)
         run: |
-          # 使用模块方式打包，避免相对导入问题
-          uv run python -m PyInstaller \
+          # 创建启动脚本避免相对导入问题
+          cat > run_aipy.py << 'EOF'
+          import sys
+          from aipyapp.__main__ import main
+          if __name__ == '__main__':
+              sys.exit(main())
+          EOF
+          
+          uv run pyinstaller \
             --onefile \
             --name aipy-linux-${{ matrix.platform }} \
             --console \
-            --paths . \
             --hidden-import aipyapp \
             --hidden-import anthropic \
             --hidden-import openai \
@@ -76,7 +82,7 @@ jobs:
             --hidden-import beautifulsoup4 \
             --hidden-import mcp \
             --collect-all aipyapp \
-            -m aipyapp
+            run_aipy.py
 
       - name: Test Executable
         run: |
@@ -201,14 +207,29 @@ jobs:
           # Install via pip to get the executable
           uv pip install dist/*.whl
           
-          # Copy executable
-          cp ~/.local/bin/aipy package/usr/local/bin/ || \
-          cp $(which aipy) package/usr/local/bin/
+          # 查找 aipy 可执行文件
+          AIPY_PATH=$(uv run which aipy || find ~/.local/bin -name aipy -o -name aipyw 2>/dev/null | head -1)
+          
+          if [ -z "$AIPY_PATH" ]; then
+            echo "Error: Cannot find aipy executable"
+            echo "Checking installed files..."
+            uv pip show aipyapp
+            find ~ -name aipy -o -name aipyw 2>/dev/null || true
+            exit 1
+          fi
+          
+          echo "Found aipy at: $AIPY_PATH"
+          cp "$AIPY_PATH" package/usr/local/bin/aipy
+          chmod +x package/usr/local/bin/aipy
+          
+          # 获取版本号
+          VERSION=$(uv run python -c "import aipyapp; print(aipyapp.__version__)" 2>/dev/null || echo "0.3.0")
+          echo "Package version: $VERSION"
           
           # Create .deb
           fpm -s dir -t deb \
             -n aipyapp \
-            -v $(cat aipyapp/__version__.py | grep -oP '\d+\.\d+\.\d+') \
+            -v "$VERSION" \
             --description "AI-Powered Python & Python-Powered AI" \
             --url "https://github.com/knownsec/aipyapp" \
             --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
@@ -218,9 +239,12 @@ jobs:
 
       - name: Create RPM Package
         run: |
+          # 获取版本号
+          VERSION=$(uv run python -c "import aipyapp; print(aipyapp.__version__)" 2>/dev/null || echo "0.3.0")
+          
           fpm -s dir -t rpm \
             -n aipyapp \
-            -v $(cat aipyapp/__version__.py | grep -oP '\d+\.\d+\.\d+') \
+            -v "$VERSION" \
             --description "AI-Powered Python & Python-Powered AI" \
             --url "https://github.com/knownsec/aipyapp" \
             --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
