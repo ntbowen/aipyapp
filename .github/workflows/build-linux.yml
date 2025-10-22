@@ -63,12 +63,6 @@ jobs:
           
           uv sync --all-extras
           uv pip install pyinstaller wxPython
-          
-          # 链接系统的 gi 到虚拟环境
-          SITE_PACKAGES=$(uv run python -c "import site; print(site.getsitepackages()[0])")
-          ln -sf /usr/lib/python3/dist-packages/gi $SITE_PACKAGES/
-          ln -sf /usr/lib/python3/dist-packages/*gi*.so $SITE_PACKAGES/ 2>/dev/null || true
-          ln -sf /usr/lib/python3/dist-packages/_gi*.so $SITE_PACKAGES/ 2>/dev/null || true
 
       - name: Build with PyInstaller (CLI)
         run: |
@@ -106,6 +100,7 @@ jobs:
             --onefile \
             --name aipy-linux-${{ matrix.platform }} \
             --windowed \
+            --paths /usr/lib/python3/dist-packages \
             --hidden-import aipyapp \
             --hidden-import anthropic \
             --hidden-import openai \
@@ -206,12 +201,6 @@ jobs:
           
           uv sync --all-extras
           uv pip install pyinstaller wxPython
-          
-          # 链接系统的 gi 到虚拟环境
-          SITE_PACKAGES=$(uv run python -c "import site; print(site.getsitepackages()[0])")
-          ln -sf /usr/lib/python3/dist-packages/gi $SITE_PACKAGES/
-          ln -sf /usr/lib/python3/dist-packages/*gi*.so $SITE_PACKAGES/ 2>/dev/null || true
-          ln -sf /usr/lib/python3/dist-packages/_gi*.so $SITE_PACKAGES/ 2>/dev/null || true
 
       - name: Build with PyInstaller
         run: |
@@ -250,6 +239,7 @@ jobs:
             --onefile \
             --name aipy \
             --windowed \
+            --paths /usr/lib/python3/dist-packages \
             --hidden-import aipyapp \
             --hidden-import anthropic \
             --hidden-import openai \
@@ -410,12 +400,6 @@ jobs:
           uv sync --all-extras
           uv pip install pyinstaller wxPython
           
-          # 链接系统的 gi 到虚拟环境
-          SITE_PACKAGES=$(uv run python -c "import site; print(site.getsitepackages()[0])")
-          ln -sf /usr/lib/python3/dist-packages/gi $SITE_PACKAGES/
-          ln -sf /usr/lib/python3/dist-packages/*gi*.so $SITE_PACKAGES/ 2>/dev/null || true
-          ln -sf /usr/lib/python3/dist-packages/_gi*.so $SITE_PACKAGES/ 2>/dev/null || true
-          
           uv build
 
       - name: Build PyInstaller Executable for Packaging
@@ -455,6 +439,7 @@ jobs:
             --onefile \
             --name aipy \
             --windowed \
+            --paths /usr/lib/python3/dist-packages \
             --hidden-import aipyapp \
             --hidden-import anthropic \
             --hidden-import openai \
