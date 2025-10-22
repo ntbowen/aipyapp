@@ -118,6 +118,24 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-dev \
+            python3-pip \
+            build-essential \
+            zlib1g-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libfreetype6-dev \
+            fuse \
+            libfuse2 \
+            file \
+            wget
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -129,26 +147,93 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y fuse libfuse2
           uv sync --all-extras
-          uv pip install python-appimage
+          uv pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          # 创建启动脚本
+          cat > run_aipy.py << 'EOF'
+          import sys
+          from aipyapp.__main__ import main
+          if __name__ == '__main__':
+              sys.exit(main())
+          EOF
+          
+          # 构建单文件可执行
+          uv run pyinstaller \
+            --onefile \
+            --name aipy \
+            --console \
+            --hidden-import aipyapp \
+            --hidden-import anthropic \
+            --hidden-import openai \
+            --hidden-import pandas \
+            --hidden-import fastapi \
+            --hidden-import rich \
+            --hidden-import prompt_toolkit \
+            --hidden-import term_image \
+            --hidden-import qrcode \
+            --hidden-import loguru \
+            --hidden-import questionary \
+            --hidden-import dynaconf \
+            --hidden-import beautifulsoup4 \
+            --hidden-import mcp \
+            --collect-all aipyapp \
+            run_aipy.py
+
+      - name: Download appimagetool
+        run: |
+          wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+
+      - name: Create AppImage Structure
+        run: |
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          
+          # 复制可执行文件
+          cp dist/aipy AppDir/usr/bin/
+          
+          # 创建 desktop 文件
+          cat > AppDir/usr/share/applications/aipy.desktop << 'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=AIPy
+          Exec=aipy
+          Icon=aipy
+          Categories=Utility;Development;
+          Terminal=true
+          EOF
+          
+          # 创建 AppRun
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin:${PATH}"
+          exec "${HERE}/usr/bin/aipy" "$@"
+          EOF
+          chmod +x AppDir/AppRun
 
       - name: Build AppImage
         run: |
-          uv run python-appimage build app \
-            -l manylinux2014_x86_64 \
-            ./aipyapp
-
-      - name: Rename AppImage
-        run: |
-          mv *.AppImage aipy-x86_64.AppImage
+          # Extract appimagetool for CI environment (no FUSE)
+          ./appimagetool-x86_64.AppImage --appimage-extract
+          
+          # Build AppImage
+          ARCH=x86_64 squashfs-root/AppRun AppDir aipy-x86_64.AppImage
           chmod +x aipy-x86_64.AppImage
           sha256sum aipy-x86_64.AppImage > aipy-x86_64.AppImage.sha256
+          
+          # Check file size
+          ls -lh aipy-x86_64.AppImage
 
       - name: Test AppImage
         run: |
           ./aipy-x86_64.AppImage --version || echo "AppImage test complete"
+          ./aipy-x86_64.AppImage --help
 
       - name: Upload AppImage Artifact
         uses: actions/upload-artifact@v4
@@ -195,8 +280,51 @@ jobs:
 
       - name: Install Project
         run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-dev \
+            python3-pip \
+            build-essential \
+            zlib1g-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libfreetype6-dev
+          
           uv sync --all-extras
+          uv pip install pyinstaller
           uv build
+
+      - name: Build PyInstaller Executable for Packaging
+        run: |
+          # 创建启动脚本
+          cat > run_aipy.py << 'EOF'
+          import sys
+          from aipyapp.__main__ import main
+          if __name__ == '__main__':
+              sys.exit(main())
+          EOF
+          
+          # 构建单文件可执行
+          uv run pyinstaller \
+            --onefile \
+            --name aipy \
+            --console \
+            --hidden-import aipyapp \
+            --hidden-import anthropic \
+            --hidden-import openai \
+            --hidden-import pandas \
+            --hidden-import fastapi \
+            --hidden-import rich \
+            --hidden-import prompt_toolkit \
+            --hidden-import term_image \
+            --hidden-import qrcode \
+            --hidden-import loguru \
+            --hidden-import questionary \
+            --hidden-import dynaconf \
+            --hidden-import beautifulsoup4 \
+            --hidden-import mcp \
+            --collect-all aipyapp \
+            run_aipy.py
 
       - name: Create DEB Package
         run: |
@@ -204,33 +332,23 @@ jobs:
           mkdir -p package/usr/share/applications
           mkdir -p package/usr/share/doc/aipyapp
           
-          # Install via pip to get the executable
-          uv pip install dist/*.whl
-          
-          # 查找 aipy 可执行文件
-          AIPY_PATH=$(uv run which aipy || find ~/.local/bin -name aipy -o -name aipyw 2>/dev/null | head -1)
-          
-          if [ -z "$AIPY_PATH" ]; then
-            echo "Error: Cannot find aipy executable"
-            echo "Checking installed files..."
-            uv pip show aipyapp
-            find ~ -name aipy -o -name aipyw 2>/dev/null || true
-            exit 1
-          fi
-          
-          echo "Found aipy at: $AIPY_PATH"
-          cp "$AIPY_PATH" package/usr/local/bin/aipy
+          # 使用 PyInstaller 生成的单文件可执行
+          cp dist/aipy package/usr/local/bin/aipy
           chmod +x package/usr/local/bin/aipy
           
           # 获取版本号
           VERSION=$(uv run python -c "import aipyapp; print(aipyapp.__version__)" 2>/dev/null || echo "0.3.0")
           echo "Package version: $VERSION"
           
+          # 测试可执行文件
+          echo "Testing executable..."
+          package/usr/local/bin/aipy --version || echo "Version check complete"
+          
           # Create .deb
           fpm -s dir -t deb \
             -n aipyapp \
             -v "$VERSION" \
-            --description "AI-Powered Python & Python-Powered AI" \
+            --description "AI-Powered Python & Python-Powered AI (standalone executable)" \
             --url "https://github.com/knownsec/aipyapp" \
             --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
             --license "Apache-2.0" \
