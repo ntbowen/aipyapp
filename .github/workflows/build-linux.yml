@@ -196,16 +196,26 @@ jobs:
           # 复制可执行文件
           cp dist/aipy AppDir/usr/bin/
           
-          # 创建 desktop 文件
-          cat > AppDir/usr/share/applications/aipy.desktop << 'EOF'
+          # 创建简单图标（文本格式）
+          cat > AppDir/aipy.png << 'EOF'
+          iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
+          EOF
+          base64 -d AppDir/aipy.png > AppDir/.aipy.png.tmp && mv AppDir/.aipy.png.tmp AppDir/aipy.png || true
+          
+          # 创建 desktop 文件（AppImage 需要在根目录）
+          cat > AppDir/aipy.desktop << 'EOF'
           [Desktop Entry]
           Type=Application
-          Name=AIPy
+          Name=AIPy - AI Python Assistant
+          Comment=AI-Powered Python environment
           Exec=aipy
           Icon=aipy
-          Categories=Utility;Development;
+          Categories=Development;Utility;ConsoleOnly;
           Terminal=true
           EOF
+          
+          # 也复制到标准位置
+          cp AppDir/aipy.desktop AppDir/usr/share/applications/
           
           # 创建 AppRun
           cat > AppDir/AppRun << 'EOF'
@@ -222,8 +232,12 @@ jobs:
           # Extract appimagetool for CI environment (no FUSE)
           ./appimagetool-x86_64.AppImage --appimage-extract
           
-          # Build AppImage
-          ARCH=x86_64 squashfs-root/AppRun AppDir aipy-x86_64.AppImage
+          # Verify AppDir structure
+          echo "AppDir structure:"
+          ls -la AppDir/
+          
+          # Build AppImage (disable desktop file validation for CI)
+          ARCH=x86_64 squashfs-root/AppRun --no-appstream AppDir aipy-x86_64.AppImage
           chmod +x aipy-x86_64.AppImage
           sha256sum aipy-x86_64.AppImage > aipy-x86_64.AppImage.sha256
           
@@ -331,10 +345,38 @@ jobs:
           mkdir -p package/usr/local/bin
           mkdir -p package/usr/share/applications
           mkdir -p package/usr/share/doc/aipyapp
+          mkdir -p package/usr/share/pixmaps
           
           # 使用 PyInstaller 生成的单文件可执行
           cp dist/aipy package/usr/local/bin/aipy
           chmod +x package/usr/local/bin/aipy
+          
+          # 创建 desktop 文件
+          cat > package/usr/share/applications/aipyapp.desktop << 'EOF'
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=AIPy
+          GenericName=AI Python Assistant
+          Comment=AI-Powered Python environment for data analysis and automation
+          Exec=/usr/local/bin/aipy
+          Terminal=true
+          Categories=Development;Utility;ConsoleOnly;
+          Keywords=python;ai;assistant;automation;
+          EOF
+          
+          # 创建简单的 README
+          cat > package/usr/share/doc/aipyapp/README << 'EOF'
+          AIPy - AI-Powered Python Assistant
+          
+          Usage:
+            aipy              - Start in task mode
+            aipy --python     - Start in Python mode
+            aipy --help       - Show help
+          
+          Configuration: ~/.aipyapp/aipyapp.toml
+          Documentation: https://github.com/knownsec/aipyapp
+          EOF
           
           # 获取版本号
           VERSION=$(uv run python -c "import aipyapp; print(aipyapp.__version__)" 2>/dev/null || echo "0.3.0")
@@ -349,11 +391,14 @@ jobs:
             -n aipyapp \
             -v "$VERSION" \
             --description "AI-Powered Python & Python-Powered AI (standalone executable)" \
-            --url "https://github.com/knownsec/aipyapp" \
+            --url "https://github.com/ntbowen/aipyapp" \
             --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
             --license "Apache-2.0" \
+            --category "devel" \
             -C package \
-            usr/local/bin/aipy=/usr/local/bin/aipy
+            usr/local/bin/aipy=/usr/local/bin/aipy \
+            usr/share/applications/aipyapp.desktop=/usr/share/applications/aipyapp.desktop \
+            usr/share/doc/aipyapp/README=/usr/share/doc/aipyapp/README
 
       - name: Create RPM Package
         run: |
@@ -363,12 +408,15 @@ jobs:
           fpm -s dir -t rpm \
             -n aipyapp \
             -v "$VERSION" \
-            --description "AI-Powered Python & Python-Powered AI" \
-            --url "https://github.com/knownsec/aipyapp" \
+            --description "AI-Powered Python & Python-Powered AI (standalone executable)" \
+            --url "https://github.com/ntbowen/aipyapp" \
             --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
             --license "Apache-2.0" \
+            --category "Development/Tools" \
             -C package \
-            usr/local/bin/aipy=/usr/local/bin/aipy
+            usr/local/bin/aipy=/usr/local/bin/aipy \
+            usr/share/applications/aipyapp.desktop=/usr/share/applications/aipyapp.desktop \
+            usr/share/doc/aipyapp/README=/usr/share/doc/aipyapp/README
 
       - name: Upload DEB/RPM Artifacts
         uses: actions/upload-artifact@v4
