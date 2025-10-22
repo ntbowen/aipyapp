@@ -55,11 +55,29 @@ jobs:
 
       - name: Build with PyInstaller (CLI)
         run: |
-          # 创建启动脚本避免相对导入问题
+          # 创建启动脚本并修补 aipyapp 的 bug
           cat > run_aipy.py << 'EOF'
           import sys
-          from aipyapp.__main__ import main
+          
+          # 修补 aipyapp 代码中的 bug
+          def patch_aipyapp():
+              """修补 aipyapp.__main__ 中 args.gui 属性缺失的问题"""
+              import aipyapp.__main__ as main_module
+              
+              original_init_settings = main_module.init_settings
+              
+              def patched_init_settings(conf, args):
+                  # 确保 args 有 gui 属性
+                  if not hasattr(args, 'gui'):
+                      command = getattr(args, 'command', None)
+                      args.gui = (command == 'gui')
+                  return original_init_settings(conf, args)
+              
+              main_module.init_settings = patched_init_settings
+          
           if __name__ == '__main__':
+              patch_aipyapp()
+              from aipyapp.__main__ import main
               sys.exit(main())
           EOF
           
@@ -152,11 +170,29 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          # 创建启动脚本
+          # 创建启动脚本并修补 aipyapp 的 bug
           cat > run_aipy.py << 'EOF'
           import sys
-          from aipyapp.__main__ import main
+          
+          # 修补 aipyapp 代码中的 bug
+          def patch_aipyapp():
+              """修补 aipyapp.__main__ 中 args.gui 属性缺失的问题"""
+              import aipyapp.__main__ as main_module
+              
+              original_init_settings = main_module.init_settings
+              
+              def patched_init_settings(conf, args):
+                  # 确保 args 有 gui 属性
+                  if not hasattr(args, 'gui'):
+                      command = getattr(args, 'command', None)
+                      args.gui = (command == 'gui')
+                  return original_init_settings(conf, args)
+              
+              main_module.init_settings = patched_init_settings
+          
           if __name__ == '__main__':
+              patch_aipyapp()
+              from aipyapp.__main__ import main
               sys.exit(main())
           EOF
           
@@ -310,11 +346,29 @@ jobs:
 
       - name: Build PyInstaller Executable for Packaging
         run: |
-          # 创建启动脚本
+          # 创建启动脚本并修补 aipyapp 的 bug
           cat > run_aipy.py << 'EOF'
           import sys
-          from aipyapp.__main__ import main
+          
+          # 修补 aipyapp 代码中的 bug
+          def patch_aipyapp():
+              """修补 aipyapp.__main__ 中 args.gui 属性缺失的问题"""
+              import aipyapp.__main__ as main_module
+              
+              original_init_settings = main_module.init_settings
+              
+              def patched_init_settings(conf, args):
+                  # 确保 args 有 gui 属性
+                  if not hasattr(args, 'gui'):
+                      command = getattr(args, 'command', None)
+                      args.gui = (command == 'gui')
+                  return original_init_settings(conf, args)
+              
+              main_module.init_settings = patched_init_settings
+          
           if __name__ == '__main__':
+              patch_aipyapp()
+              from aipyapp.__main__ import main
               sys.exit(main())
           EOF
           
