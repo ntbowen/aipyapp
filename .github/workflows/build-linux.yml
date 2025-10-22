@@ -55,18 +55,28 @@ jobs:
 
       - name: Build with PyInstaller (CLI)
         run: |
-          uv run pyinstaller \
+          # 使用模块方式打包，避免相对导入问题
+          uv run python -m PyInstaller \
             --onefile \
             --name aipy-linux-${{ matrix.platform }} \
             --console \
-            --add-data "aipyapp:aipyapp" \
+            --paths . \
+            --hidden-import aipyapp \
             --hidden-import anthropic \
             --hidden-import openai \
             --hidden-import pandas \
             --hidden-import fastapi \
             --hidden-import rich \
             --hidden-import prompt_toolkit \
-            aipyapp/__main__.py
+            --hidden-import term_image \
+            --hidden-import qrcode \
+            --hidden-import loguru \
+            --hidden-import questionary \
+            --hidden-import dynaconf \
+            --hidden-import beautifulsoup4 \
+            --hidden-import mcp \
+            --collect-all aipyapp \
+            -m aipyapp
 
       - name: Test Executable
         run: |
