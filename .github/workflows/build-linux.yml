@@ -120,6 +120,8 @@ jobs:
             --hidden-import wx.lib \
             --hidden-import gi \
             --hidden-import gi.repository \
+            --hidden-import appdirs \
+            --hidden-import pkg_resources \
             --collect-all aipyapp \
             --collect-all wx \
             --collect-all gi \
@@ -259,6 +261,8 @@ jobs:
             --hidden-import wx.lib \
             --hidden-import gi \
             --hidden-import gi.repository \
+            --hidden-import appdirs \
+            --hidden-import pkg_resources \
             --collect-all aipyapp \
             --collect-all wx \
             --collect-all gi \
@@ -459,6 +463,8 @@ jobs:
             --hidden-import wx.lib \
             --hidden-import gi \
             --hidden-import gi.repository \
+            --hidden-import appdirs \
+            --hidden-import pkg_resources \
             --collect-all aipyapp \
             --collect-all wx \
             --collect-all gi \
