@@ -57,7 +57,7 @@ jobs:
             gir1.2-gtk-3.0
           
           uv sync --all-extras
-          uv pip install pyinstaller wxPython
+          uv pip install pyinstaller wxPython appdirs setuptools
 
       - name: Build with PyInstaller
         run: |
@@ -257,7 +257,7 @@ jobs:
             gir1.2-gtk-3.0
           
           uv sync --all-extras
-          uv pip install pyinstaller wxPython
+          uv pip install pyinstaller wxPython appdirs setuptools
           
           uv build
 
