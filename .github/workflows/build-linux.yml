@@ -120,7 +120,7 @@ jobs:
             --collect-all aipyapp \
             --collect-all wx \
             --collect-all gi \
-            --collect-data jsonschema \
+            --collect-all jsonschema \
             run_aipy.py
 
       - name: Download appimagetool
@@ -321,7 +321,7 @@ jobs:
             --collect-all aipyapp \
             --collect-all wx \
             --collect-all gi \
-            --collect-data jsonschema \
+            --collect-all jsonschema \
             run_aipy.py
 
       - name: Create DEB Package
@@ -512,7 +512,7 @@ jobs:
             --collect-all aipyapp \
             --collect-all wx \
             --collect-all gi \
-            --collect-data jsonschema \
+            --collect-all jsonschema \
             run_aipy.py
 
       - name: Create RPM Package
