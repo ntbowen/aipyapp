@@ -97,6 +97,7 @@ jobs:
             --name aipy \
             --windowed \
             --paths /usr/lib/python3/dist-packages \
+            --exclude-module pkg_resources \
             --hidden-import aipyapp \
             --hidden-import anthropic \
             --hidden-import openai \
@@ -116,8 +117,6 @@ jobs:
             --hidden-import wx.lib \
             --hidden-import gi \
             --hidden-import gi.repository \
-            --hidden-import appdirs \
-            --hidden-import pkg_resources \
             --collect-all aipyapp \
             --collect-all wx \
             --collect-all gi \
@@ -207,7 +206,196 @@ jobs:
             aipy-x86_64.AppImage.sha256
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  build-rpm-deb:
+  build-deb:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ruby \
+            ruby-dev \
+            rubygems \
+            build-essential
+          sudo gem install --no-document fpm
+
+      - name: Install Project
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-dev \
+            python3-pip \
+            build-essential \
+            zlib1g-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libfreetype6-dev
+          
+          # 安装 GUI 依赖和系统 Python GI 绑定
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libnotify-dev \
+            libsdl2-dev \
+            libwebkit2gtk-4.0-dev \
+            gir1.2-webkit2-4.0 \
+            python3-gi \
+            python3-gi-cairo \
+            gir1.2-gtk-3.0
+          
+          uv sync --all-extras
+          uv pip install pyinstaller wxPython appdirs setuptools
+          
+          uv build
+
+      - name: Build PyInstaller Executable for Packaging
+        run: |
+          # 创建启动脚本并修补 aipyapp 的 bug，默认启动 GUI
+          cat > run_aipy.py << 'EOF'
+          import sys
+          
+          # 修补 aipyapp 代码中的 bug
+          def patch_aipyapp():
+              """修补 aipyapp.__main__ 中 args.gui 属性缺失的问题"""
+              import aipyapp.__main__ as main_module
+              
+              original_init_settings = main_module.init_settings
+              
+              def patched_init_settings(conf, args):
+                  # 确保 args 有 gui 属性
+                  if not hasattr(args, 'gui'):
+                      command = getattr(args, 'command', None)
+                      args.gui = (command == 'gui')
+                  return original_init_settings(conf, args)
+              
+              main_module.init_settings = patched_init_settings
+          
+          if __name__ == '__main__':
+              # 如果没有参数，默认启动 GUI
+              if len(sys.argv) == 1:
+                  sys.argv.append('gui')
+              
+              patch_aipyapp()
+              from aipyapp.__main__ import main
+              sys.exit(main())
+          EOF
+          
+          # 构建单文件可执行（GUI 模式）
+          uv run pyinstaller \
+            --onefile \
+            --name aipy \
+            --windowed \
+            --paths /usr/lib/python3/dist-packages \
+            --exclude-module pkg_resources \
+            --hidden-import aipyapp \
+            --hidden-import anthropic \
+            --hidden-import openai \
+            --hidden-import pandas \
+            --hidden-import fastapi \
+            --hidden-import rich \
+            --hidden-import prompt_toolkit \
+            --hidden-import term_image \
+            --hidden-import qrcode \
+            --hidden-import loguru \
+            --hidden-import questionary \
+            --hidden-import dynaconf \
+            --hidden-import beautifulsoup4 \
+            --hidden-import mcp \
+            --hidden-import wx \
+            --hidden-import wx.core \
+            --hidden-import wx.lib \
+            --hidden-import gi \
+            --hidden-import gi.repository \
+            --collect-all aipyapp \
+            --collect-all wx \
+            --collect-all gi \
+            run_aipy.py
+
+      - name: Create DEB Package
+        run: |
+          mkdir -p package/usr/local/bin
+          mkdir -p package/usr/share/applications
+          mkdir -p package/usr/share/doc/aipyapp
+          mkdir -p package/usr/share/pixmaps
+          
+          # 使用 PyInstaller 生成的单文件可执行
+          cp dist/aipy package/usr/local/bin/aipy
+          chmod +x package/usr/local/bin/aipy
+          
+          # 创建 desktop 文件（GUI 模式）
+          cat > package/usr/share/applications/aipyapp.desktop << 'EOF'
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=AIPy
+          GenericName=AI Python Assistant
+          Comment=AI-Powered Python environment for data analysis and automation
+          Exec=/usr/local/bin/aipy
+          Terminal=false
+          Categories=Development;Utility;
+          Keywords=python;ai;assistant;automation;gui;
+          EOF
+          
+          # 创建简单的 README
+          cat > package/usr/share/doc/aipyapp/README << 'EOF'
+          AIPy - AI-Powered Python Assistant
+          
+          Usage:
+            aipy              - Start in task mode
+            aipy --python     - Start in Python mode
+            aipy --help       - Show help
+          
+          Configuration: ~/.aipyapp/aipyapp.toml
+          Documentation: https://github.com/knownsec/aipyapp
+          EOF
+          
+          # 获取版本号
+          VERSION=$(uv run python -c "import aipyapp; print(aipyapp.__version__)" 2>/dev/null || echo "0.3.0")
+          echo "Package version: $VERSION"
+          
+          # 测试可执行文件
+          echo "Testing executable..."
+          package/usr/local/bin/aipy --version || echo "Version check complete"
+          
+          # Create .deb
+          fpm -s dir -t deb \
+            -n aipyapp \
+            -v "$VERSION" \
+            --description "AI-Powered Python & Python-Powered AI (standalone executable)" \
+            --url "https://github.com/ntbowen/aipyapp" \
+            --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
+            --license "Apache-2.0" \
+            --category "devel" \
+            -C package \
+            usr/local/bin/aipy=/usr/local/bin/aipy \
+            usr/share/applications/aipyapp.desktop=/usr/share/applications/aipyapp.desktop \
+            usr/share/doc/aipyapp/README=/usr/share/doc/aipyapp/README
+
+      - name: Upload DEB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aipy-deb
+          path: '*.deb'
+
+      - name: Upload DEB to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '*.deb'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-rpm:
     runs-on: ubuntu-22.04
     
     steps:
@@ -299,6 +487,7 @@ jobs:
             --name aipy \
             --windowed \
             --paths /usr/lib/python3/dist-packages \
+            --exclude-module pkg_resources \
             --hidden-import aipyapp \
             --hidden-import anthropic \
             --hidden-import openai \
@@ -318,14 +507,12 @@ jobs:
             --hidden-import wx.lib \
             --hidden-import gi \
             --hidden-import gi.repository \
-            --hidden-import appdirs \
-            --hidden-import pkg_resources \
             --collect-all aipyapp \
             --collect-all wx \
             --collect-all gi \
             run_aipy.py
 
-      - name: Create DEB Package
+      - name: Create RPM Package
         run: |
           mkdir -p package/usr/local/bin
           mkdir -p package/usr/share/applications
@@ -371,25 +558,7 @@ jobs:
           echo "Testing executable..."
           package/usr/local/bin/aipy --version || echo "Version check complete"
           
-          # Create .deb
-          fpm -s dir -t deb \
-            -n aipyapp \
-            -v "$VERSION" \
-            --description "AI-Powered Python & Python-Powered AI (standalone executable)" \
-            --url "https://github.com/ntbowen/aipyapp" \
-            --maintainer "ntbowen <ntbowen@users.noreply.github.com>" \
-            --license "Apache-2.0" \
-            --category "devel" \
-            -C package \
-            usr/local/bin/aipy=/usr/local/bin/aipy \
-            usr/share/applications/aipyapp.desktop=/usr/share/applications/aipyapp.desktop \
-            usr/share/doc/aipyapp/README=/usr/share/doc/aipyapp/README
-
-      - name: Create RPM Package
-        run: |
-          # 获取版本号
-          VERSION=$(uv run python -c "import aipyapp; print(aipyapp.__version__)" 2>/dev/null || echo "0.3.0")
-          
+          # Create .rpm
           fpm -s dir -t rpm \
             -n aipyapp \
             -v "$VERSION" \
@@ -403,19 +572,15 @@ jobs:
             usr/share/applications/aipyapp.desktop=/usr/share/applications/aipyapp.desktop \
             usr/share/doc/aipyapp/README=/usr/share/doc/aipyapp/README
 
-      - name: Upload DEB/RPM Artifacts
+      - name: Upload RPM Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aipy-packages
-          path: |
-            *.deb
-            *.rpm
+          name: aipy-rpm
+          path: '*.rpm'
 
-      - name: Upload Packages to Release
+      - name: Upload RPM to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            *.deb
-            *.rpm
+          files: '*.rpm'
           token: ${{ secrets.GITHUB_TOKEN }}
